@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>barea.js</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; padding: 20px; }
+            img {
+                width: 100px; /* Adjust size */
+                height: 100px;
+                border-radius: 50%;
+                float: left;
+                align-self: center;
+            }
+            .ba-cloak {
+                visibility: hidden;
+            }
+            .container {
+                display: flex; /* Enables flexbox */
+                gap: 10px; /* Adds space between divs */
+                font-size: 18px;  
+                clear: both;
+            }
+            .box {
+                width: 30%; /* Each div takes half the width */
+                padding: 20px;
+                text-align: left;
+                border: 1px solid black;
+                height: 900px;
+                overflow-y: auto;
+                margin-top: 10px;
+            }
+            .box2 {
+                width: 70%; /* Each div takes half the width */
+                padding: 20px;
+                /*background-color: lightblue;*/
+                text-align: left;
+                border: 1px solid black;
+                overflow-y: auto;
+                height: 900px;
+                margin-top: 10px;
+            }
+            .infobox {
+                padding: 15px;
+                background-color: lightgray;
+                text-align: left;
+                border: 1px solid black;
+            }
+            .redbg {  background-color: red;}
+            .bluebg {  background-color: lightblue;}
+            li { padding: 10px;}
+            .star-rating {
+                display: flex;
+                flex-direction: row;
+                gap: 10px; /* Space between stars */
+            }
+
+            .star-rating input {
+               display: none; /* Hide checkboxes */
+            }
+
+            .star-rating label {
+                font-size: 2rem; /* Size of stars */
+                cursor: pointer;
+                transition: color 0.3s;
+            }
+
+            /* Default star (unchecked) */
+                .star-rating input + label::before {
+                content: "☆";
+                color: #999; /* Gray color */
+            }
+
+            /* Checked star (filled) */
+                .star-rating input:checked + label::before {
+                content: "★";
+                color: gold; /* Gold color for checked stars */
+            }
+
+            .beautiful-btn {
+                background: linear-gradient(135deg, #8e929f, #3f334d);
+                color: white;
+                padding: 12px 20px;
+                font-size: 18px;
+                font-weight: bold;
+                border: none;
+                border-radius: 25px;
+                cursor: pointer;
+                transition: all 0.3s ease;
+                text-transform: uppercase;
+                letter-spacing: 1px;
+                box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.2);
+                outline: none;
+                display: inline-block;
+            }
+
+           
+    </style>
+</head>
+<body>
+
+
+    <div id="app" class="ba-cloak">
+
+        <img ba-img-src="root.model.image" />
+        <h1 style="float: left; margin-left: 20px;">barea.js, vungular.js, zaplet.js, storm.js, fungular.js, margherita.js</h1>
+
+        <div class="container">
+           
+            <div class="box">   
+                <p>{{root.description}}</p>
+                <p><b>What about it</b></p>
+                <div>
+                    <ul>
+                        <li>Using proxies to react on data changes, like vue3</li>
+                        <li>Super light, less than 50Kb unminified</li>
+                        <li>Fast</li>
+                        <li>No dependencies to other libs</li>
+                        <li>
+                            Directive: ba-bind
+                            <div class="infobox">
+                                <b>&lt;input type="text" ba-bind="root.model.user.firstname"&gt;</b><br />
+                                <i>Bind ui controls to a single value in the model</i>
+                            </div>
+                        </li>
+                        <li>
+                            Directive: ba-bind-handler
+                            <div class="infobox">
+                               <b>&lt;input type="text" ba-bind="root.model.somedata" ba-bind-handler="someDataHandler"&gt;</b>
+                               <i>Override binding logic for complex ui controls, by implementing a function that updates data/ui when the bound value changes.</i>
+                            </div>
+                        </li>
+                        <li>Directive: ba-click</li>
+                            <div class="infobox">
+                                <b>&lt;button ba-click="saveMyData" ba-path="root.model"&gt;</b><br />
+                                <i>Run functions</i>
+                            </div>
+                        <li>
+                            Directive: ba-foreach
+                            <div class="infobox">
+                                <b>
+                                &lt;tr ba-foreach="show in root.model.shows"&gt;<br />
+                                    <span style="margin-left: 10px;">&lt;td&gt;&lt;input type="text" ba-bind="show.Note"&gt;&lt;/td&gt;</span><br />
+                                &lt;/tr&gt;
+                                </b><br />
+                                <i>A template directive to create new html based on an array in your model, works only on arrays</i>
+                             </div>
+                        </li>
+                        <li>
+                            Directive: ba-class
+                            <div ba-class="root.settings.myDivClasses">
+                                <b>&lt;div ba-class="root.settings.myDivClasses" &gt;&lt;/div&gt;</b><br/>
+                                <i>Set class names in your data and have them reflected in the dom. Example: use ba-click to update some classes</i>
+                                <br />
+                                <br />
+                                <button class="beautiful-btn" ba-click="tryClassHandler">Try ba-class</button>
+                            </div>
+                        </li>
+                        <li>Directive: ba-hide
+                            <div class="infobox">
+                                <b>&lt;p ba-hide="root.model.somevalue" &gt;&lt;/p&gt;</b> <br />
+                                <i>Show / Hide an element when changing a boolean value in the model</i>
+                                <br />
+                                <br />
+                                <b>&lt;div ba-hide="someHandler" &gt;&lt;/div&gt;</b>
+                                <i>Show / Hide an element based on a boolean function called when ever the model changes</i>
+                        </li>
+                        <li>Directive: ba-show
+                            <div class="infobox">
+                                <b>&lt;p ba-show="root.model.somevalue" &gt;&lt;/p&gt;</b> <br />
+                                <i>Show / Hide an element when changing a boolean value in the model</i>
+                                <br />
+                                <br />
+                                <b>&lt;div ba-show="someHandler" &gt;&lt;/div&gt;</b>
+                                <i>Show / Hide an element based on a boolean function called when ever the model changes</i>
+                            </div>
+                        </li>
+
+                        <li>Directive: ba-if
+                            <div class="infobox">
+                                <b>&lt;p ba-if="root.showText" &gt;&lt;/p&gt;</b> <br />
+                                <i>Add / Remove elements when changing a boolean value in the model</i>
+                                <br />
+                                <br />
+                                <b>&lt;div ba-if="showTextHandler" &gt;&lt;/div&gt;</b>
+                                <i>Add / Remove elements based on a boolean function called when ever the model changes</i>
+                                <br />
+                                <br />
+                                <button class="beautiful-btn" ba-click="tryIfHandler">Try ba-if</button>
+                                <p ba-if="showTextHandler">Add / Remove this text by a boolean handler</p>
+                            </div>
+                         </li>
+                        <li>Directive: ba-img-src
+                            <div class="infobox"><i>Show images based on urls in your model</i></div>
+                        </li>
+                        <li>Directive: ba-path
+                            <div class="infobox"><i>Use this together with handlers (ba-if, ba-show etc..) to have data at a certain path sent as an event parameter</i></div>
+                        </li>
+                        <li>Directive: ba-href
+                            <div class="infobox">
+                                <i>
+                                    Use this to set the href attribute from your data <br />
+                                    <a ba-href="root.linkToNPM">A link from data</a>
+                                 </i>
+                            </div>
+                        </li>
+                        <li>Interpolation, example: {{root.model.users[5].firstname}}</li>
+                        <li>Check out the source of this page, all features are used on it.</li>
+                        <li>Does not support any expressions defined in the markup.</li>
+                    </ul>
+                </div> 
+            </div>
+
+            <div class="box2">
+                    <h1>{{root.model.description}}, count: {{root.model.shows.count}}</h1>
+                    <button class="beautiful-btn" ba-click="editHandler" ba-path="root.model">Edit Notes</button>
+                    <button class="beautiful-btn" ba-click="showMoreRamones">Show a lot more shows</button>
+                    <br />
+                    <br />
+                    <table>
+                        <thead>
+                            <tr>
+                                <td width="5%"><b>Index</b></td>
+                                <td width="20%"><b>Date</b></td>
+                                <td width="20%"><span ba-hide="root.edit"><b>Note</b></span><span ba-show="root.edit"><b>Note (ba-bind)</b></span></td>
+                                <td width="20%"><b>Rate</b></td>
+                                <td></td>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr ba-foreach="show in root.model.shows">
+                                <td>{{Index}}</td>
+                                <td>{{show.Date}}</td>
+                                <td>
+                                    <span ba-hide="root.edit">{{show.Note}}</span>
+                                    <span ba-show="root.edit"><input type="text" ba-bind="show.Note" /></span>
+                                </td>
+                                <td id="ratecol"></td>
+                                <td>{{show}}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                  
+            </div>
+
+        </div>
+    </div>
+       
+    <script src="../barea.js"></script>
+    <script src="../examples/ratingcomponent.js"></script>
+    <script src="../examples/ramonesshows.js"></script>
+    <script>
+
+        //The element where barea.js will be active
+        var appDiv = document.getElementById("app");
+
+        //Set the rating component in the ba-foreach template
+        //Just an example of reusable markup in a separate file
+        //See ratingcomponent.js
+        var ratingcolumn = document.getElementById("ratecol");
+        ratingcolumn.innerHTML = getRatingBar('show.Rating','rateHandler');
+
+        //Create a model and add som data
+        var dataset = { model: { description: "List of Ramones shows", shows:[], image:"../examples/stone.png"}, settings:{ myDivClasses: "infobox" }};
+        dataset.model.shows = getRamonesShows().slice(0,10);
+        dataset.description = "barea.js (Basic Reactivity) is a small reactive java script, it can be use to list Ramones shows and hopefully other things :)";
+        dataset.edit = false;
+        dataset.showText=true;
+        dataset.linkToNPM="https://www.npmjs.com";
+
+        //Create the barea.js app
+        var bareaapp = getApp(dataset, false);
+
+        //Some logs are available if needed
+        bareaapp.printConsoleLogs();
+        //bareaapp.enableConsoleLog(1, true);
+        //bareaapp.enableConsoleLog(2, true);
+        //bareaapp.enableConsoleLog(3, true);
+        //bareaapp.enableConsoleLog(4, true);
+
+        //Turn off interpolation for speed
+        //bareaapp.enableInterpolation(false);
+
+         //Hide the app element before the dom is fully loaded
+         bareaapp.enableHideBeforeLoaded(true);
+
+         //Custom binding handler for complex controls (the rating bar) in this example
+         //when we use ba-bind and ba-bind-handler, then the handler is called instead of setting data/ui so yo can manage it your way
+         //See ratingcomponent.js
+        bareaapp.addHandler("rateHandler", getRatingHandler);
+
+        //ba-click handler for the edit button
+        bareaapp.addHandler("editHandler", function(event, element, data) 
+        {
+            dataset.edit = !dataset.edit;
+
+            //You can also get the complete proxified model
+            //var t = this.getData();
+            
+        });
+
+         //ba-click handler to demonstrate ba-class
+        bareaapp.addHandler("tryClassHandler", function(event) 
+        {
+            if (dataset.settings.myDivClasses !== "infobox redbg")
+                dataset.settings.myDivClasses = "infobox redbg";
+            else
+                dataset.settings.myDivClasses = "infobox bluebg";
+
+        });
+
+         //ba-click handler to demonstrate ba-class
+         bareaapp.addHandler("tryIfHandler", function(event) 
+        {
+            
+            dataset.showText = !dataset.showText;
+
+        });
+
+        bareaapp.addHandler("showMoreRamones", function(event, element, data) 
+        {
+            dataset.model.shows = getRamonesShows();
+            element.disabled=true;
+            
+
+        });
+
+        //Boolean expression handler, must return true / false
+        bareaapp.addHandler("showTextHandler", function(event) 
+        {
+           return  dataset.showText;
+        });
+
+
+       //Replace initial dataset with the proxified version
+       //Then you don't have to use bareaapp.getData() or this.getData()
+       dataset = bareaapp.mount(appDiv);
+     
+        
+    </script>
+
+</body>
+</html>
