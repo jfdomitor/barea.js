@@ -1,0 +1,26 @@
+{
+  "name": "barea.js",
+  "version": "1.0.0",
+  "description": "A lightweight reactive lib for modern browsers",
+  "main": "barea.js",
+  "directories": {
+    "example": "examples"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jfdomitor/barea.js.git"
+  },
+  "keywords": [
+    "reactivity",
+    "databinding"
+  ],
+  "author": "Johan Filipsson",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/jfdomitor/barea.js/issues"
+  },
+  "homepage": "https://github.com/jfdomitor/barea.js#readme"
+}
