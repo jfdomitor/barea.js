@@ -8,8 +8,8 @@
  * 
  * Copyright (c) 2025 Johan Filipsson
  */
-function getApp(data, enableInternalId){
-    return new BareaApp(data, enableInternalId);
+function getBareaApp(enableInternalId){
+    return new BareaApp(enableInternalId);
 }
 
 //Directives
@@ -65,21 +65,35 @@ class BareaApp {
     #domDictionary = []; //Reference dom from paths
     #domDictionaryId=0;
     #mounted=false;
+    #mountedHandler=null;
 
-    constructor(data, enableInternalId) {
-        this.#appDataProxy = data;
+    constructor(enableInternalId) {
+        //this.#appDataProxy = data;
         this.#enableBareaId=enableInternalId;
         this.#setConsoleLogs();
        
     }
 
-    mount(element) 
+    mount(element, data) 
     {
         if (this.#mounted)
             return;
 
         this.#mounted=true;
-        this.#appElement = element;
+
+        if (!element)
+        {
+                console.error('Illegal use of mount, please pass an element or an element identifier');
+                return;
+        }
+
+        if (typeof element === "object") 
+            this.#appElement = element
+        else
+            this.#appElement = document.getElementById(element);
+
+        this.#appDataProxy = data
+
         if (this.#enableHideUnloaded)
         {
             document.addEventListener('DOMContentLoaded',this.#loadedHandler);
@@ -87,15 +101,12 @@ class BareaApp {
             document.querySelectorAll(".ba-cloak").forEach(el => el.classList.remove("ba-cloak"));
         }
        
-
-
         if (!('fetch' in window && 'Promise' in window && 'Symbol' in window && 'Map' in window))
         {
             console.error('Your browser and js engine is too old to use this script');
             return;
         }
           
-       
         const proxy = this.#createReactiveProxy((path, value, key) => 
         { 
             //Handles changes in the data and updates the dom
@@ -120,7 +131,8 @@ class BareaApp {
         if (this.#enableBareaId && ! this.#appDataProxy.hasOwnProperty('baId')) 
             this.#appDataProxy.baId = ++this.#bareaId;  // Assign a new unique ID
 
-       
+        if (this.#mountedHandler)   
+            this.#mountedHandler.apply(this, [this.#appDataProxy]);
    
         return this.#appDataProxy;
     }
@@ -147,11 +159,27 @@ class BareaApp {
             this.#enableHideUnloaded = value;
     }
    
-    addHandler(functionName, handlerFunction) {
-        if (typeof handlerFunction === "function") {
+    addHandler(functionName, handlerFunction) 
+    {
+        if (typeof handlerFunction === "function")
+        {
             this.#eventHandlers[functionName] = handlerFunction;
-        } else {
+        } 
+        else 
+        {
             console.warn(`Handler for "${functionName}" is not a function.`);
+        }
+    }
+
+    addMountedHandler(handlerFunction) 
+    {
+        if (typeof handlerFunction === "function") 
+        {
+            this.#mountedHandler = handlerFunction;
+        } 
+        else 
+        {
+            console.warn("The object passed to addMountedHandler is not a function.");
         }
     }
 

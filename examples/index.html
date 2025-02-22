@@ -104,7 +104,7 @@
     <div id="app" class="ba-cloak">
 
         <img ba-img-src="root.model.image" />
-        <h1 style="float: left; margin-left: 20px;">barea.js, vungular.js, zaplet.js, storm.js, fungular.js, margherita.js</h1>
+        <h1 style="float: left; margin-left: 20px;">barea.js</h1>
 
         <div class="container">
            
@@ -253,8 +253,6 @@
     <script src="../examples/ramonesshows.js"></script>
     <script>
 
-        //The element where barea.js will be active
-        var appDiv = document.getElementById("app");
 
         //Set the rating component in the ba-foreach template
         //Just an example of reusable markup in a separate file
@@ -262,16 +260,9 @@
         var ratingcolumn = document.getElementById("ratecol");
         ratingcolumn.innerHTML = getRatingBar('show.Rating','rateHandler');
 
-        //Create a model and add som data
-        var dataset = { model: { description: "List of Ramones shows", shows:[], image:"../examples/stone.png"}, settings:{ myDivClasses: "infobox" }};
-        dataset.model.shows = getRamonesShows().slice(0,10);
-        dataset.description = "barea.js (Basic Reactivity) is a small reactive java script, it can be use to list Ramones shows and hopefully other things :)";
-        dataset.edit = false;
-        dataset.showText=true;
-        dataset.linkToNPM="https://www.npmjs.com";
-
-        //Create the barea.js app
-        var bareaapp = getApp(dataset, false);
+        //Create the barea.js app 
+        //Available paramteter: enableInternalId = let barea assign a unique id (baId) to each object
+        var bareaapp = getBareaApp(false);
 
         //Some logs are available if needed
         bareaapp.printConsoleLogs();
@@ -292,9 +283,10 @@
         bareaapp.addHandler("rateHandler", getRatingHandler);
 
         //ba-click handler for the edit button
-        bareaapp.addHandler("editHandler", function(event, element, data) 
+        //Available parameters: event, element, data, this = bareaapp
+        bareaapp.addHandler("editHandler", function(event) 
         {
-            dataset.edit = !dataset.edit;
+            this.getData().edit = !this.getData().edit;
 
             //You can also get the complete proxified model
             //var t = this.getData();
@@ -302,26 +294,28 @@
         });
 
          //ba-click handler to demonstrate ba-class
+        //Available parameters: event, element, data, this = bareaapp
         bareaapp.addHandler("tryClassHandler", function(event) 
         {
-            if (dataset.settings.myDivClasses !== "infobox redbg")
-                dataset.settings.myDivClasses = "infobox redbg";
+            if (this.getData().settings.myDivClasses !== "infobox redbg")
+                this.getData().settings.myDivClasses = "infobox redbg";
             else
-                dataset.settings.myDivClasses = "infobox bluebg";
+                this.getData().settings.myDivClasses = "infobox bluebg";
 
         });
 
-         //ba-click handler to demonstrate ba-class
-         bareaapp.addHandler("tryIfHandler", function(event) 
+        //ba-click handler to demonstrate ba-if
+        //Available parameters: event, element, data, this = bareaapp
+        bareaapp.addHandler("tryIfHandler", function(event) 
         {
-            
-            dataset.showText = !dataset.showText;
-
+            this.getData().showText = !this.getData().showText;
         });
 
-        bareaapp.addHandler("showMoreRamones", function(event, element, data) 
+        //ba-click handler to show more data
+        //Available parameters: event, element, data, this = bareaapp
+        bareaapp.addHandler("showMoreRamones", function(event,element) 
         {
-            dataset.model.shows = getRamonesShows();
+            this.getData().model.shows = getRamonesShows();
             element.disabled=true;
             
 
@@ -330,13 +324,23 @@
         //Boolean expression handler, must return true / false
         bareaapp.addHandler("showTextHandler", function(event) 
         {
-           return  dataset.showText;
+           return  this.getData().showText;
+        });
+
+         //Boolean expression handler, must return true / false
+         //Data = this.getData();
+        bareaapp.addMountedHandler(function(data) 
+        {
+            data.model.shows = getRamonesShows().slice(0,10);
         });
 
 
-       //Replace initial dataset with the proxified version
-       //Then you don't have to use bareaapp.getData() or this.getData()
-       dataset = bareaapp.mount(appDiv);
+       //Mount the app to the application element where barea.js should be active together with initial data if any
+       bareaapp.mount("app",
+        { edit:false, showText:true, linkToNPM:"https://www.npmjs.com",  
+          description: "barea.js (Basic Reactivity) is a small reactive java script, it can be use to list Ramones shows and hopefully other things :)",
+          model: { description: "List of Ramones shows", shows:[], image:"../examples/stone.png"}, settings:{ myDivClasses: "infobox" }
+        });
      
         
     </script>
