@@ -8,6 +8,35 @@ No dependencies just raw reactivity.
 * Super light, around than 40Kb unminified
 * Fast
 * No dependencies to other libs
+
+# Setup
+
+```
+<script src="../barea.js"></script>
+<script>
+const bareaapp = getBareaApp();
+
+const appcontent = {
+    data: {
+      model: { name:"Johnny Barea" }
+    },
+    methods:
+    {
+      someHandler: function(event, arg1, arg2, arg3, arg4, arg5, arg6)
+      {
+        //Do something
+      }
+      },
+      mounted: function(data) 
+      {
+          data.model = getSomeData();
+      }
+};
+
+bareaapp.mount("app",appcontent);
+</script>
+```
+
 * Directive: ba-bind
 ```
 <input type="text" ba-bind="root.model.user.firstname">
