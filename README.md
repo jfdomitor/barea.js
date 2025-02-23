@@ -35,6 +35,11 @@ A template directive to create new html based on an array in your model, works o
 <div ba-class="root.settings.myDivClasses" ></div>
 Set class names in your data and have them reflected in the dom.
 ```
+* Directive: ba-class-if
+```
+<div ba-class-if="root.somevalue==='hey ho'?class1,class2,class3" ></div>
+Set class names in your data and have them reflected in the dom.
+```
 * Directive: ba-hide
 ```
 <p ba-hide="root.model.somevalue" ></p>
@@ -50,6 +55,7 @@ Show / Hide an element based on an expression
 
 <div ba-show="someHandler" ></div>
 Show / Hide an element based on a boolean function
+```
 * Directive: ba-if
 ```
 <p ba-if="root.showText" ></p>
