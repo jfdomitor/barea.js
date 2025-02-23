@@ -1,5 +1,6 @@
 # barea.js
-barea.js (Basic Reactivity) is a small reactive java script heavy influenced by vue.js and angular.js (before they became huge frameworks). The intended audience is server rended pages that need an easy way to manage ui bindings and tweaks. No dependencies just raw reactivity.
+barea.js (Basic Reactivity) is a small reactive java script heavy influenced by vue.js and angular.js (before they became huge frameworks).
+No dependencies just raw reactivity.
 
 # What about it
 
@@ -37,28 +38,27 @@ Set class names in your data and have them reflected in the dom.
 * Directive: ba-hide
 ```
 <p ba-hide="root.model.somevalue" ></p>
-Show / Hide an element when changing a boolean value in the model
+Show / Hide an element based on an expression
 
 <div ba-hide="someHandler" ></div>
-Show / Hide an element based on a boolean function called when ever the model changes
+Show / Hide an element based on a boolean function
 ```
 * Directive: ba-show
 ```
 <p ba-show="root.model.somevalue" ></p>
-Show / Hide an element when changing a boolean value in the model
+Show / Hide an element based on an expression
 
 <div ba-show="someHandler" ></div>
-Show / Hide an element based on a boolean function called when ever the model changes
-```
+Show / Hide an element based on a boolean function
 * Directive: ba-if
 ```
 <p ba-if="root.showText" ></p>
-Add / Remove elements when changing a boolean value in the model
+Add / Remove elements based on an expression
 
 <div ba-if="showTextHandler" ></div>
-Add / Remove elements based on a boolean function called when ever the model changes
+Add / Remove elements based on a boolean function
 ```
-* Directive: ba-img-src
+* Directive: ba-src
 ```
 Show images based on urls in your model
 ```

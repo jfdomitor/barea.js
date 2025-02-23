@@ -30,6 +30,7 @@
                 height: 900px;
                 overflow-y: auto;
                 margin-top: 10px;
+                font-size: 14px; 
             }
             .box2 {
                 width: 70%; /* Each div takes half the width */
@@ -103,7 +104,7 @@
 
     <div id="app" class="ba-cloak">
 
-        <img ba-img-src="root.model.image" />
+        <img ba-src="root.model.image" />
         <h1 style="float: left; margin-left: 20px;">barea.js</h1>
 
         <div class="container">
@@ -157,10 +158,20 @@
                                 <button class="beautiful-btn" ba-click="tryClassHandler">Try ba-class</button>
                             </div>
                         </li>
+                        <li>
+                            Directive: ba-class-if
+                            <div class="infobox" ba-class-if="root.edit?redbg">
+                                <b>&lt;div ba-class-if="root.edit?redbg" &gt;&lt;/div&gt;</b><br/>
+                                <i>Set class names based on an expression or the result of an handler</i>
+                                <br />
+                                <br />
+                                <button class="beautiful-btn" ba-click="editHandler">Try ba-class-if</button>
+                            </div>
+                        </li>
                         <li>Directive: ba-hide
                             <div class="infobox">
                                 <b>&lt;p ba-hide="root.model.somevalue" &gt;&lt;/p&gt;</b> <br />
-                                <i>Show / Hide an element when changing a boolean value in the model</i>
+                                <i>Show / Hide an element based on an expression</i>
                                 <br />
                                 <br />
                                 <b>&lt;div ba-hide="someHandler" &gt;&lt;/div&gt;</b>
@@ -169,7 +180,7 @@
                         <li>Directive: ba-show
                             <div class="infobox">
                                 <b>&lt;p ba-show="root.model.somevalue" &gt;&lt;/p&gt;</b> <br />
-                                <i>Show / Hide an element when changing a boolean value in the model</i>
+                                <i>Show / Hide an element  based on an expression</i>
                                 <br />
                                 <br />
                                 <b>&lt;div ba-show="someHandler" &gt;&lt;/div&gt;</b>
@@ -180,7 +191,7 @@
                         <li>Directive: ba-if
                             <div class="infobox">
                                 <b>&lt;p ba-if="root.showText" &gt;&lt;/p&gt;</b> <br />
-                                <i>Add / Remove elements when changing a boolean value in the model</i>
+                                <i>Add / Remove elements based on an expression</i>
                                 <br />
                                 <br />
                                 <b>&lt;div ba-if="showTextHandler" &gt;&lt;/div&gt;</b>
@@ -188,10 +199,10 @@
                                 <br />
                                 <br />
                                 <button class="beautiful-btn" ba-click="tryIfHandler">Try ba-if</button>
-                                <p ba-if="showTextHandler">Add / Remove this text by a boolean handler</p>
+                                <p ba-if="root.showText==true">Add / Remove this text by a boolean handler</p>
                             </div>
                          </li>
-                        <li>Directive: ba-img-src
+                        <li>Directive: ba-src
                             <div class="infobox"><i>Show images based on urls in your model</i></div>
                         </li>
                         <li>Directive: ba-path
@@ -207,7 +218,6 @@
                         </li>
                         <li>Interpolation, example: {{root.model.users[5].firstname}}</li>
                         <li>Check out the source of this page, all features are used on it.</li>
-                        <li>Does not support any expressions defined in the markup.</li>
                     </ul>
                 </div> 
             </div>
@@ -297,10 +307,10 @@
         //Available parameters: event, element, data, this = bareaapp
         bareaapp.addHandler("tryClassHandler", function(event) 
         {
-            if (this.getData().settings.myDivClasses !== "infobox redbg")
-                this.getData().settings.myDivClasses = "infobox redbg";
+            if (this.getData().settings.myDivClasses !== "infobox,redbg")
+                this.getData().settings.myDivClasses = "infobox,redbg";
             else
-                this.getData().settings.myDivClasses = "infobox bluebg";
+                this.getData().settings.myDivClasses = "infobox,bluebg";
 
         });
 
@@ -322,10 +332,10 @@
         });
 
         //Boolean expression handler, must return true / false
-        bareaapp.addHandler("showTextHandler", function(event) 
-        {
-           return  this.getData().showText;
-        });
+        // bareaapp.addHandler("showTextHandler", function(event) 
+        // {
+        //    return  this.getData().showText;
+        // });
 
          //Boolean expression handler, must return true / false
          //Data = this.getData();
