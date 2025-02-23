@@ -69,11 +69,12 @@ class BareaApp {
     #mounted=false;
     #mountedHandler=null;
 
-    constructor(enableInternalId) {
-        //this.#appDataProxy = data;
-        this.#enableBareaId=enableInternalId;
-        this.#setConsoleLogs();
-       
+    constructor(enableInternalId) 
+    {
+        if (enableInternalId)
+            this.#enableBareaId=enableInternalId;
+
+        this.#setConsoleLogs(); 
     }
 
     mount(element, content) 
