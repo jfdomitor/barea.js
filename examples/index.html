@@ -267,12 +267,12 @@
         //Set the rating component in the ba-foreach template
         //Just an example of reusable markup in a separate file
         //See ratingcomponent.js
-        var ratingcolumn = document.getElementById("ratecol");
+        const ratingcolumn = document.getElementById("ratecol");
         ratingcolumn.innerHTML = getRatingBar('show.Rating','rateHandler()');
 
         //Create the barea.js app 
         //Available paramteter: enableInternalId = let barea assign a unique id (baId) to each object
-        var bareaapp = getBareaApp();
+        const bareaapp = getBareaApp();
 
         //Some logs are available if needed
         bareaapp.printConsoleLogs();
