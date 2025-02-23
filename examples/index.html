@@ -128,13 +128,13 @@
                         <li>
                             Directive: ba-bind-handler
                             <div class="infobox">
-                               <b>&lt;input type="text" ba-bind="root.model.somedata" ba-bind-handler="someDataHandler"&gt;</b>
+                               <b>&lt;input type="text" ba-bind="root.model.somedata" ba-bind-handler="someDataHandler('args if you like')"&gt;</b>
                                <i>Override binding logic for complex ui controls, by implementing a function that updates data/ui when the bound value changes.</i>
                             </div>
                         </li>
                         <li>Directive: ba-click</li>
                             <div class="infobox">
-                                <b>&lt;button ba-click="saveMyData" ba-path="root.model"&gt;</b><br />
+                                <b>&lt;button ba-click="saveMyData('arg1','arg2','arg3')" ba-path="root.model"&gt;</b><br />
                                 <i>Run functions</i>
                             </div>
                         <li>
@@ -155,17 +155,17 @@
                                 <i>Set class names in your data and have them reflected in the dom. Example: use ba-click to update some classes</i>
                                 <br />
                                 <br />
-                                <button class="beautiful-btn" ba-click="tryClassHandler">Try ba-class</button>
+                                <button class="beautiful-btn" ba-click="tryClassHandler('arg1','arg2',true,777)">Try ba-class</button>
                             </div>
                         </li>
                         <li>
                             Directive: ba-class-if
                             <div class="infobox" ba-class-if="root.edit?redbg">
-                                <b>&lt;div ba-class-if="root.edit?redbg" &gt;&lt;/div&gt;</b><br/>
-                                <i>Set class names based on an expression or the result of an handler</i>
+                                <b>&lt;div ba-class-if="root.edit?classname1,classname2" &gt;&lt;/div&gt;</b><br/>
+                                <i>Add / Remove class names based on an expression or the result of an handler</i>
                                 <br />
                                 <br />
-                                <button class="beautiful-btn" ba-click="editHandler">Try ba-class-if</button>
+                                <button class="beautiful-btn" ba-click="editHandler()">Try ba-class-if</button>
                             </div>
                         </li>
                         <li>Directive: ba-hide
@@ -174,7 +174,7 @@
                                 <i>Show / Hide an element based on an expression</i>
                                 <br />
                                 <br />
-                                <b>&lt;div ba-hide="someHandler" &gt;&lt;/div&gt;</b>
+                                <b>&lt;div ba-hide="someHandler()" &gt;&lt;/div&gt;</b>
                                 <i>Show / Hide an element based on a boolean function called when ever the model changes</i>
                         </li>
                         <li>Directive: ba-show
@@ -183,7 +183,7 @@
                                 <i>Show / Hide an element  based on an expression</i>
                                 <br />
                                 <br />
-                                <b>&lt;div ba-show="someHandler" &gt;&lt;/div&gt;</b>
+                                <b>&lt;div ba-show="someHandler()" &gt;&lt;/div&gt;</b>
                                 <i>Show / Hide an element based on a boolean function called when ever the model changes</i>
                             </div>
                         </li>
@@ -194,11 +194,11 @@
                                 <i>Add / Remove elements based on an expression</i>
                                 <br />
                                 <br />
-                                <b>&lt;div ba-if="showTextHandler" &gt;&lt;/div&gt;</b>
+                                <b>&lt;div ba-if="showTextHandler()" &gt;&lt;/div&gt;</b>
                                 <i>Add / Remove elements based on a boolean function called when ever the model changes</i>
                                 <br />
                                 <br />
-                                <button class="beautiful-btn" ba-click="tryIfHandler">Try ba-if</button>
+                                <button class="beautiful-btn" ba-click="tryIfHandler()">Try ba-if</button>
                                 <p ba-if="root.showText==true">Add / Remove this text by a boolean handler</p>
                             </div>
                          </li>
@@ -224,8 +224,8 @@
 
             <div class="box2">
                     <h1>{{root.model.description}}, count: {{root.model.shows.count}}</h1>
-                    <button class="beautiful-btn" ba-click="editHandler" ba-path="root.model">Edit Notes</button>
-                    <button class="beautiful-btn" ba-click="showMoreRamones">Show a lot more shows</button>
+                    <button class="beautiful-btn" ba-click="editHandler('Editing...')" ba-path="root.model">Edit Notes</button>
+                    <button class="beautiful-btn" ba-click="showMoreRamones('Hey ho lets go')">Show a lot more shows</button>
                     <br />
                     <br />
                     <table>
@@ -268,7 +268,7 @@
         //Just an example of reusable markup in a separate file
         //See ratingcomponent.js
         var ratingcolumn = document.getElementById("ratecol");
-        ratingcolumn.innerHTML = getRatingBar('show.Rating','rateHandler');
+        ratingcolumn.innerHTML = getRatingBar('show.Rating','rateHandler()');
 
         //Create the barea.js app 
         //Available paramteter: enableInternalId = let barea assign a unique id (baId) to each object
@@ -287,71 +287,56 @@
          //Hide the app element before the dom is fully loaded
          bareaapp.enableHideBeforeLoaded(true);
 
-         //Custom binding handler for complex controls (the rating bar) in this example
-         //when we use ba-bind and ba-bind-handler, then the handler is called instead of setting data/ui so yo can manage it your way
-         //See ratingcomponent.js
-        bareaapp.addHandler("rateHandler", getRatingHandler);
+         const appcontent = {
+            data: {
+                edit:false, showText:true, linkToNPM:"https://www.npmjs.com",  
+                description: "barea.js (Basic Reactivity) is a small reactive java script, it can be use to list Ramones shows and hopefully other things :)",
+                model: { description: "List of Ramones shows", shows:[], image:"../examples/stone.png"}, settings:{ myDivClasses: "infobox" }
+            },
+            methods:{
 
-        //ba-click handler for the edit button
-        //Available parameters: event, element, data, this = bareaapp
-        bareaapp.addHandler("editHandler", function(event) 
-        {
-            this.getData().edit = !this.getData().edit;
+                //Custom binding handler for complex controls (the rating bar) in this example
+                //when we use ba-bind and ba-bind-handler, then the handler is called instead of setting data/ui so yo can manage it your way
+                //See ratingcomponent.js
+                rateHandler: getRatingHandler,
+                editHandler: function(event, arg1, arg2, arg3, arg4, arg5, arg6)
+                {
+                    //ba-click handler for the edit button
+                    //Available parameters: event, element, data, this = bareaapp
+                    this.getData().edit = !this.getData().edit;
+                },
+                tryClassHandler: function(event,arg1, arg2, arg3, arg4, arg5, arg6) 
+                {
+                    //ba-click handler to demonstrate ba-class
+                    //Available parameters: event, element, data, this = bareaapp
+                    if (this.getData().settings.myDivClasses !== "infobox,redbg")
+                        this.getData().settings.myDivClasses = "infobox,redbg";
+                    else
+                        this.getData().settings.myDivClasses = "infobox,bluebg";
+                },
+                tryIfHandler: function(event,arg1, arg2, arg3, arg4, arg5, arg6) 
+                {
+                    //ba-click handler to demonstrate ba-if
+                    //Available parameters: event, element, data, this = bareaapp
+                    this.getData().showText = !this.getData().showText;
+                },
+                showMoreRamones: function(event,element,data,arg1, arg2, arg3, arg4, arg5) 
+                {
+                    //ba-click handler to show more data
+                    //Available parameters: event, element, data, this = bareaapp
+                    this.getData().model.shows = getRamonesShows();
+                    element.disabled=true;
+                }
+            },
+            mounted: function(data) 
+            {
+                data.model.shows = getRamonesShows().slice(0,10);
+            }
+         };
 
-            //You can also get the complete proxified model
-            //var t = this.getData();
-            
-        });
+         bareaapp.mount("app",appcontent);
+       
 
-         //ba-click handler to demonstrate ba-class
-        //Available parameters: event, element, data, this = bareaapp
-        bareaapp.addHandler("tryClassHandler", function(event) 
-        {
-            if (this.getData().settings.myDivClasses !== "infobox,redbg")
-                this.getData().settings.myDivClasses = "infobox,redbg";
-            else
-                this.getData().settings.myDivClasses = "infobox,bluebg";
-
-        });
-
-        //ba-click handler to demonstrate ba-if
-        //Available parameters: event, element, data, this = bareaapp
-        bareaapp.addHandler("tryIfHandler", function(event) 
-        {
-            this.getData().showText = !this.getData().showText;
-        });
-
-        //ba-click handler to show more data
-        //Available parameters: event, element, data, this = bareaapp
-        bareaapp.addHandler("showMoreRamones", function(event,element) 
-        {
-            this.getData().model.shows = getRamonesShows();
-            element.disabled=true;
-            
-
-        });
-
-        //Boolean expression handler, must return true / false
-        // bareaapp.addHandler("showTextHandler", function(event) 
-        // {
-        //    return  this.getData().showText;
-        // });
-
-         //Boolean expression handler, must return true / false
-         //Data = this.getData();
-        bareaapp.addMountedHandler(function(data) 
-        {
-            data.model.shows = getRamonesShows().slice(0,10);
-        });
-
-
-       //Mount the app to the application element where barea.js should be active together with initial data if any
-       bareaapp.mount("app",
-        { edit:false, showText:true, linkToNPM:"https://www.npmjs.com",  
-          description: "barea.js (Basic Reactivity) is a small reactive java script, it can be use to list Ramones shows and hopefully other things :)",
-          model: { description: "List of Ramones shows", shows:[], image:"../examples/stone.png"}, settings:{ myDivClasses: "infobox" }
-        });
-     
         
     </script>
 

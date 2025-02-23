@@ -15,12 +15,12 @@ Bind ui controls to a single value in the model
 ```
 * Directive: ba-bind-handler
 ```
-<input type="text" ba-bind="root.model.somedata" ba-bind-handler="someDataHandler">
+<input type="text" ba-bind="root.model.somedata" ba-bind-handler="someDataHandler()">
 Override binding logic for complex ui controls, by implementing a function that updates data/ui when the bound value changes.
 ```
 * Directive: ba-click
 ```
-<button ba-click="saveMyData" ba-path="root.model">
+<button ba-click="saveMyData('arg1', 'arg2')" ba-path="root.model">
 Run functions
 ```
 * Directive: ba-foreach
@@ -38,6 +38,7 @@ Set class names in your data and have them reflected in the dom.
 * Directive: ba-class-if
 ```
 <div ba-class-if="root.somevalue==='hey ho'?class1,class2,class3" ></div>
+<div ba-class-if="someHandler()?class1,class2,class3" ></div>
 Set class names in your data and have them reflected in the dom.
 ```
 * Directive: ba-hide
@@ -45,7 +46,7 @@ Set class names in your data and have them reflected in the dom.
 <p ba-hide="root.model.somevalue" ></p>
 Show / Hide an element based on an expression
 
-<div ba-hide="someHandler" ></div>
+<div ba-hide="someHandler('arg1', 'arg2')" ></div>
 Show / Hide an element based on a boolean function
 ```
 * Directive: ba-show
@@ -53,7 +54,7 @@ Show / Hide an element based on a boolean function
 <p ba-show="root.model.somevalue" ></p>
 Show / Hide an element based on an expression
 
-<div ba-show="someHandler" ></div>
+<div ba-show="someHandler('arg1', 'arg2')" ></div>
 Show / Hide an element based on a boolean function
 ```
 * Directive: ba-if
@@ -61,7 +62,7 @@ Show / Hide an element based on a boolean function
 <p ba-if="root.showText" ></p>
 Add / Remove elements based on an expression
 
-<div ba-if="showTextHandler" ></div>
+<div ba-if="showTextHandler('arg1', 'arg2')" ></div>
 Add / Remove elements based on a boolean function
 ```
 * Directive: ba-src
