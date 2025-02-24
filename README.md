@@ -9,6 +9,11 @@ No dependencies just raw reactivity.
 * Fast
 * No dependencies to other libs
 
+# Install
+```
+npm install barea.js
+```
+
 # Setup
 
 ```
