@@ -289,7 +289,7 @@
 
          const appcontent = {
             data: {
-                edit:false, showText:true, linkToNPM:"https://www.npmjs.com",  
+                edit:false, showText:true, linkToNPM:"https://www.npmjs.com", createdByFirstName:"Johan", createdByLastName:"Filipsson", 
                 description: "barea.js (Basic Reactivity) is a small reactive java script, it can be use to list Ramones shows and hopefully other things :)",
                 model: { description: "List of Ramones shows", shows:[], image:"../examples/stone.png"}, settings:{ myDivClasses: "infobox" }
             },
@@ -328,6 +328,30 @@
                     element.disabled=true;
                 }
             },
+            computed:{
+
+                sortedShows:function()
+                {
+                    return this.getData().model.shows.sort((a, b) => {
+                            let modifier = 1;
+                           
+                                if (a['Note'] < b['Note']) 
+                                    return -1 * modifier;
+
+                                if (a['Note'] > b['Note']) 
+                                    return 1 * modifier;
+                                    
+                                return 0;
+                            });
+                                
+
+                },
+                createdByFullName: function()
+                {
+                    return this.getData().createdByFirstName + ' - ' + this.getData().createdByLastName;
+                }
+
+            },
             mounted: function(data) 
             {
                 data.model.shows = getRamonesShows().slice(0,10);
@@ -335,6 +359,12 @@
          };
 
          bareaapp.mount("app",appcontent);
+
+         console.log(bareaapp.createdByFullName);
+
+         bareaapp.getData().createdByFirstName = 'Stellan';
+
+         console.log(bareaapp.createdByFullName);
        
 
         

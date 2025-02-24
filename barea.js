@@ -68,6 +68,9 @@ class BareaApp {
     #domDictionaryId=0;
     #mounted=false;
     #mountedHandler=null;
+    #computedProperties = {};
+    #computedDependencyTracker = new Map();
+    #activeComputedKey = null;
 
     constructor(enableInternalId) 
     {
@@ -120,6 +123,26 @@ class BareaApp {
             }); 
         }
 
+        //Computed
+        if (content.computed) 
+        {
+            Object.keys(content.computed).forEach(key => {
+                if (typeof content.computed[key] === "function") {
+                    // Create a computed property that uses a getter function
+                    this.#computedProperties[key] = this.#createComputedProperty(key, content.computed[key]);
+                }
+            });
+
+            // Add computed properties to the class instance (but don't overwrite existing properties)
+            Object.keys(this.#computedProperties).forEach(key => {
+                Object.defineProperty(this, key, {
+                    get: this.#computedProperties[key].computedGetter,
+                    enumerable: true,  // Make it enumerable so it shows up when iterating
+                    configurable: true  // Allow future changes if needed
+                });
+            });
+        }
+
         if (content.mounted)
         {
             this.#mountedHandler = content.mounted;
@@ -145,6 +168,8 @@ class BareaApp {
             let log = this.#getConsoleLog(1);
             if (log.active)
                 console.log(log.name, path, value, key);
+
+            this.#triggerRecomputation(path);
 
             this.#renderTemplates(key, path, value);
             this.#setupBindings(path);
@@ -217,6 +242,43 @@ class BareaApp {
         return target;
     }
 
+    // Method to define a computed property
+    #createComputedProperty(key, getter) {
+        let cachedValue;
+        const dependencies = new Set();
+
+        const computedGetter = () => {
+           
+            // Track dependencies
+            dependencies.clear();
+            this.#computedDependencyTracker.set(key, dependencies);  
+            this.#activeComputedKey = key;
+            cachedValue = getter.call(this);
+            this.#activeComputedKey = null;
+            return cachedValue;
+        };
+
+        // Capture initial dependencies by running the getter once
+        this.#activeComputedKey = key;
+        cachedValue = getter.call(this);
+        this.#activeComputedKey = null;
+
+        return {
+            computedGetter,
+            dependencies
+        };
+    }
+
+    // Triggers recomputation if a dependency changes
+    #triggerRecomputation(path) {
+        Object.keys(this.#computedProperties).forEach(key => {
+            const { dependencies, computedGetter } = this.#computedProperties[key];
+            if (dependencies.has(path)) {
+                computedGetter(); // Recompute value
+            }
+        });
+    }
+
     #createReactiveProxy(callback, data, currentpath = "root") {
       
         const handler = {
@@ -224,6 +286,13 @@ class BareaApp {
                 const value = target[key];
                 const newPath = Array.isArray(target) ? `${currentpath}[${key}]` : `${currentpath}.${key}`;
               
+                 // Track dependencies for computed properties
+                 if (this.#activeComputedKey) {
+                    if (!this.#computedDependencyTracker.has(this.#activeComputedKey)) {
+                        this.#computedDependencyTracker.set(this.#activeComputedKey, new Set());
+                    }
+                    this.#computedDependencyTracker.get(this.#activeComputedKey).add(newPath);
+                }
               
                 // If the value is already a proxy, return it as is to avoid recursive proxying
                 if (value && value.__isProxy) {
