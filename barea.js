@@ -124,7 +124,7 @@ class BareaApp
         if (content.computed) {
             Object.keys(content.computed).forEach(key => {
                 if (typeof content.computed[key] === "function") {
-                    //this.#enableComputedProperties=true;
+                    this.#enableComputedProperties=true;
                     this.#computedProperties[key] = new BareaComputedProperty(content.computed[key], this);
                 }
             });
@@ -222,9 +222,23 @@ class BareaApp
     }
 
 
-    getPathData(path) {
+    getProxifiedPathData(path) {
         const keys = path.match(/[^.[\]]+/g);
         let target = this.#appDataProxy;
+    
+        // Loop with for (faster than forEach)
+        for (let i = 0; i < keys.length; i++) {
+            if (i === 0 && keys[i].toLowerCase() === 'root') continue; // Skip 'root' only if it's the first key
+            if (!target) return undefined; // Exit early if target becomes null/undefined
+            target = target[keys[i]];
+        }
+    
+        return target;
+    }
+
+    getPathData(path) {
+        const keys = path.match(/[^.[\]]+/g);
+        let target = this.#appData;
     
         // Loop with for (faster than forEach)
         for (let i = 0; i < keys.length; i++) {
@@ -567,7 +581,7 @@ class BareaApp
                     if (attribFuncDef)
                     {
                         let ba_path = item.element.getAttribute(META_PATH);
-                        const dataatpath = this.getPathData(ba_path);
+                        const dataatpath = this.getProxifiedPathData(ba_path);
                         attribFuncDef=attribFuncDef.trim();
                         let pieces = this.#parseFunctionCall(attribFuncDef);
                         let allparams =  [VERB_SET_DATA, item.element, dataatpath];
@@ -620,12 +634,7 @@ class BareaApp
                 item.element.addEventListener("click", (event) => {
   
                     const path = this.#getClosestAttribute(event.target, META_PATH); 
-                    let data = {};
-                    if (path){
-                        data = this.getPathData(path);
-                    } else {
-                        data = this.#appDataProxy;
-                    }
+                    let data = this.getProxifiedPathData(path);
                     let allparams = [event,item.element, data];
                     let pieces = this.#parseFunctionCall(attribFuncDef);
                     allparams.push(...pieces.params);
@@ -924,13 +933,8 @@ class BareaApp
                 boolhandlers.forEach(t=>
                 {
                     const path = instance.#getClosestAttribute(t.element, META_PATH); 
-                    let data = {};
-                    if (path){
-                        data = instance.getPathData(path);
-                    } else {
-                        data = instance.#appDataProxy;
-                    }
-
+                    let data = instance.getPathData(path);
+                  
                     let attribFuncDef = t.expressions[0];
                     let boundvalue = false;
                     attribFuncDef=attribFuncDef.trim();
@@ -1006,7 +1010,6 @@ class BareaApp
                         }
                     }
                     
-                    //const dataclone = structuredClone(instance.#appDataProxy); 
                      expression=expression.replace('root.','contextdata.');
                      boundvalue = evaluateCondition(expression, instance.#appData);
                       
