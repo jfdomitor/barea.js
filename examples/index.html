@@ -145,7 +145,7 @@
                                     <span style="margin-left: 10px;">&lt;td&gt;&lt;input type="text" ba-bind="show.Note"&gt;&lt;/td&gt;</span><br />
                                 &lt;/tr&gt;
                                 </b><br />
-                                <i>A template directive to create new html based on an array in your model, works only on arrays</i>
+                                <i>A template directive to create new html based on an array or computed function in your model, works only on arrays</i>
                              </div>
                         </li>
                         <li>
@@ -174,7 +174,7 @@
                                 <i>Show / Hide an element based on an expression</i>
                                 <br />
                                 <br />
-                                <b>&lt;div ba-hide="someHandler()" &gt;&lt;/div&gt;</b>
+                                <b>&lt;div ba-hide="computedFunction()" &gt;&lt;/div&gt;</b>
                                 <i>Show / Hide an element based on a boolean function called when ever the model changes</i>
                         </li>
                         <li>Directive: ba-show
@@ -183,7 +183,7 @@
                                 <i>Show / Hide an element  based on an expression</i>
                                 <br />
                                 <br />
-                                <b>&lt;div ba-show="someHandler()" &gt;&lt;/div&gt;</b>
+                                <b>&lt;div ba-show="computedFunction()" &gt;&lt;/div&gt;</b>
                                 <i>Show / Hide an element based on a boolean function called when ever the model changes</i>
                             </div>
                         </li>
@@ -194,12 +194,12 @@
                                 <i>Add / Remove elements based on an expression</i>
                                 <br />
                                 <br />
-                                <b>&lt;div ba-if="showTextHandler()" &gt;&lt;/div&gt;</b>
-                                <i>Add / Remove elements based on a boolean function called when ever the model changes</i>
+                                <b>&lt;div ba-if="canShowText()" &gt;&lt;/div&gt;</b>
+                                <i>Add / Remove elements based on a computed function</i>
                                 <br />
                                 <br />
                                 <button class="beautiful-btn" ba-click="tryIfHandler()">Try ba-if</button>
-                                <p ba-if="root.showText==true">Add / Remove this text by a boolean handler</p>
+                                <p ba-if="canShowText()">Add / Remove this text by a computed function</p>
                             </div>
                          </li>
                         <li>Directive: ba-src
@@ -350,6 +350,10 @@
                 createdByFullName: function()
                 {
                     return this.getData().createdByFirstName + ' - ' + this.getData().createdByLastName;
+                },
+                canShowText: function()
+                {
+                    return this.getData().showText;
                 }
 
             },

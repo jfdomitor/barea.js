@@ -264,34 +264,6 @@ class BareaApp
         return target;
     }
 
-    // getPathData(path) {
-
-    //     if (!path) 
-    //         return this.#appDataProxy; // Handle cases where regex fails
-
-    //     const keys = path.match(/[^.[\]]+/g);
-    //     if (!keys) 
-    //         return this.#appDataProxy; // Handle cases where regex fails
-    
-    //     let target = this.#appDataProxy;
-    
-    //     for (let i = 0; i < keys.length; i++) {
-    //         if (i === 0 && keys[i].toLowerCase() === 'root') continue;
-    
-    //         if (target == null) return undefined; // Handle null or undefined safely
-    
-    //         // Bypass Proxy `get` trap
-    //         const descriptor = Reflect.getOwnPropertyDescriptor(target, keys[i]);
-    
-    //         // If the property doesn't exist, return undefined early
-    //         if (!descriptor) return undefined;
-    
-    //         target = descriptor.value;
-    //     }
-    
-    //     return target;
-    // }
-
     setPathData(data, path, value) {
         const keys = path.match(/[^.[\]]+/g); 
         if (!keys) 
@@ -309,38 +281,17 @@ class BareaApp
                 target[key] = isNaN(keys[i + 1]) ? {} : [];
             }
     
-            target = Reflect.get(target, key); // ✅ Safe access
+            target = Reflect.get(target, key); //Safe access
         }
     
         // Ensure only the exact property triggers reactivity
         const lastKey = isNaN(keys[keys.length - 1]) ? keys[keys.length - 1] : Number(keys[keys.length - 1]);
-        return Reflect.set(target, lastKey, value); // ✅ Reactivity-safe set
+        return Reflect.set(target, lastKey, value); //Reactivity-safe set
     }
 
-    // setPathData(data, path, value) {
-    //     try {
-    //         // Adjust path to account for 'root.' as contextdata.
-    //         if (path.includes('root.')) {
-    //             path = path.replace('root.', 'contextdata.');
-    //         }
-    
-    //         // Create a dynamic function to directly set the value at the given path
-    //         // Using Reflect.set to ensure the Proxy set trap is called
-    //         new Function('contextdata', `
-    //             // Trigger the Proxy's set trap with Reflect.set to ensure reactivity
-    //             return Reflect.set(contextdata, '${path}', contextdata.value);
-    //         `)(data, value);
-    //     } catch (error) {
-    //         console.error("Error setting data:", error);
-    //     }
-    // }
-    
-    
-    
-    
 
-    #createReactiveProxy(callback, data, currentpath = "root") {
-      
+    #createReactiveProxy(callback, data, currentpath = "root") 
+    {
         const handler = {
             get: (target, key) => {
                 const value = target[key];
@@ -475,6 +426,37 @@ class BareaApp
                     }
                     else
                     {
+                        //The user has given a boolean expression in the attribute
+                        //We aim to convert it to a computed function
+
+                        let condition = "";
+                        if (expressions.length>1)
+                            condition = expressions[1]
+                        else
+                            condition = expressions[0];
+
+                        //Register boolean expression as a computed function
+                        const boolfunc = function()
+                        {
+                            function  evaluateCondition(condition, context) {
+                                try {
+                                    return new Function("contextdata", `return ${condition};`)(context);
+                                } catch (error) {
+                                    console.error("Error evaluating condition:", error);
+                                    return false;
+                                }
+                            }
+                            
+                            condition=condition.replace('root.','contextdata.');
+                            return evaluateCondition(condition, this.#appDataProxy);
+                        }
+
+                        //Make up a functionname
+                        this.baId++;
+                        const funcname = `exprFunc_${this.#bareaId}`;
+                        expressions.push(funcname);
+                        this.#enableComputedProperties=true;
+                        this.#computedProperties[funcname] = new BareaComputedProperty(boolfunc, this);
                         const odo = this.#createDomDictionaryObject(el,el.parentElement,null,attr.name,"", DIR_TYPE_BOOLEXPR, true,"","",templateId,expressions);
                         this.#domDictionary.push(odo);
                     }
@@ -691,11 +673,23 @@ class BareaApp
             if (!varname)
                 throw new Error(`No variable name was found in the ${DIR_FOREACH} expression`);
 
-            if (!Array.isArray(array))
-                foreacharray = this.getPathData(datapath);
+            if (this.#isValidHandlerName(datapath))
+            {
+                let pieces = this.#parseFunctionCall(datapath);
+                if (pieces.functionName)
+                {
+                    foreacharray = this.#computedProperties[pieces.functionName].value;
+                }
+                else
+                {
+                    console.warn(`Could not find computed function name in the ${DIR_FOREACH} directive`);
+                }
+            }
             else
-                foreacharray= array;
-
+            {
+                foreacharray = this.getPathData(datapath); 
+            }
+            
             if (!Array.isArray(foreacharray))
                 return; //throw new Error('renderTemplates could not get array, ' + path);
 
@@ -957,10 +951,10 @@ class BareaApp
                     let pieces = instance.#parseFunctionCall(attribFuncDef);
                     allparams.push(...pieces.params);
 
-                    if (instance.#methods[pieces.functionName]) {
-                            boundvalue = instance.#methods[pieces.functionName].apply(instance, allparams);
+                    if (instance.#computedProperties[pieces.functionName]) {
+                            boundvalue = instance.#computedProperties[pieces.functionName].value;
                     } else {
-                        console.warn(`Handler function '${pieces.functionName}' not found.`);
+                        console.warn(`Computed boolean handler '${pieces.functionName}' not found.`);
                     }
                     
                     if (t.directive===DIR_HIDE)
@@ -1009,24 +1003,29 @@ class BareaApp
                 const boolexpr = instance.#domDictionary.filter(p=> p.directivetype === DIR_TYPE_BOOLEXPR);
                 boolexpr.forEach(t=>
                 {
-                     
-                      let expression = t.expressions[0];
-                      let boundvalue = false;
-                      expression=expression.trim();
-                    
+                    if (!t.expressions)
+                        return;
 
-                    function  evaluateCondition(condition, context) {
-                        try {
-                            return new Function("contextdata", `return ${condition};`)(context);
-                        } catch (error) {
-                            console.error("Error evaluating condition:", error);
-                            return false;
-                        }
+                       
+                    let funcname = "";
+                    if (t.expressions.length>2)
+                        funcname=t.expressions[2]
+                    else
+                        funcname=t.expressions[1];
+
+                    if (!funcname)
+                    {
+                        console.error('Could not find function name for computed boolean expression fucntion');
+                        return;
                     }
+                    let boundvalue = false;
+                    if (instance.#computedProperties[funcname]) {
+                        boundvalue = instance.#computedProperties[funcname].value;
+                    } else {
+                        console.warn(`Computed boolean expression fucntion '${pieces.functionName}' not found.`);
+                    }    
+                     
                     
-                     expression=expression.replace('root.','contextdata.');
-                     boundvalue = evaluateCondition(expression, instance.#appData);
-                      
                     if (t.directive===DIR_HIDE)
                         t.element.style.display = boundvalue ? "none" : ""
                     else if (t.directive===DIR_SHOW)      
@@ -1238,11 +1237,6 @@ class BareaApp
 
         if (handlername.includes('(') && handlername.includes(')'))
             return true;
-
-        // if (this.#hasAnyChar(handlername,['(',',',')','.']))
-        // {
-        //      return false;
-        // }
 
         return false;
     }
