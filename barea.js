@@ -222,8 +222,15 @@ class BareaApp
     }
 
 
-    getProxifiedPathData(path) {
+    getProxifiedPathData(path) 
+    {
+        if (!path) 
+            return this.#appDataProxy;
+
         const keys = path.match(/[^.[\]]+/g);
+        if (!keys) 
+            return this.#appDataProxy; // Handle cases where regex fails
+
         let target = this.#appDataProxy;
     
         // Loop with for (faster than forEach)
@@ -236,8 +243,15 @@ class BareaApp
         return target;
     }
 
-    getPathData(path) {
+    getPathData(path) 
+    {
+        if (!path) 
+            return this.#appData; 
+
         const keys = path.match(/[^.[\]]+/g);
+        if (!keys) 
+            return this.#appData; // Handle cases where regex fails
+
         let target = this.#appData;
     
         // Loop with for (faster than forEach)
