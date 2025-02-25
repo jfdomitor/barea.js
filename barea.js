@@ -49,14 +49,13 @@ const META_PATH = 'ba-path';
 const INTERPOL_INDEX = 'index';
 const INTERPOL_ARRCOUNT = 'count';
 
-class BareaApp {
+class BareaApp 
+{
 
-    #bareaId=0;
-    #enableBareaId = false;
-    #enableInterpolation = true;
     #appElement; 
-    #enableHideUnloaded=false;
+    #bareaId=0;
     #appDataProxy; 
+    #appData;
     #methods = {};
     #consoleLogs = [];
     #domDictionary = []; //Reference dom from paths
@@ -64,6 +63,10 @@ class BareaApp {
     #mounted=false;
     #mountedHandler=null;
     #computedProperties = {};
+    #enableBareaId = false;
+    #enableInterpolation = true;
+    #enableHideUnloaded=false;
+    #enableComputedProperties=false;
 
     constructor(enableInternalId) 
     {
@@ -102,6 +105,7 @@ class BareaApp {
         else
             this.#appElement = document.getElementById(element);
 
+        this.#appData = content.data;
         this.#appDataProxy = content.data;
 
         //Methods
@@ -120,6 +124,7 @@ class BareaApp {
         if (content.computed) {
             Object.keys(content.computed).forEach(key => {
                 if (typeof content.computed[key] === "function") {
+                    //this.#enableComputedProperties=true;
                     this.#computedProperties[key] = new BareaComputedProperty(content.computed[key], this);
                 }
             });
@@ -160,13 +165,11 @@ class BareaApp {
             if (log.active)
                 console.log(log.name, path, value, key);
 
-            this.#triggerRecomputation(path);
-
             this.#renderTemplates(key, path, value);
             this.#setupBindings(path);
             this.#applyProxyChangesToDOM(path, value);
 
-        }, this.#appDataProxy);
+        }, this.#appData);
 
         this.#appDataProxy = proxy;
   
@@ -233,17 +236,80 @@ class BareaApp {
         return target;
     }
 
-    
+    // getPathData(path) {
 
-    // Triggers recomputation if a dependency changes
-    #triggerRecomputation(path) {
-        Object.keys(this.#computedProperties).forEach(key => {
-            const { dependencies, computedGetter } = this.#computedProperties[key];
-            if (dependencies.has(path)) {
-                computedGetter(); // Recompute value
+    //     if (!path) 
+    //         return this.#appDataProxy; // Handle cases where regex fails
+
+    //     const keys = path.match(/[^.[\]]+/g);
+    //     if (!keys) 
+    //         return this.#appDataProxy; // Handle cases where regex fails
+    
+    //     let target = this.#appDataProxy;
+    
+    //     for (let i = 0; i < keys.length; i++) {
+    //         if (i === 0 && keys[i].toLowerCase() === 'root') continue;
+    
+    //         if (target == null) return undefined; // Handle null or undefined safely
+    
+    //         // Bypass Proxy `get` trap
+    //         const descriptor = Reflect.getOwnPropertyDescriptor(target, keys[i]);
+    
+    //         // If the property doesn't exist, return undefined early
+    //         if (!descriptor) return undefined;
+    
+    //         target = descriptor.value;
+    //     }
+    
+    //     return target;
+    // }
+
+    setPathData(data, path, value) {
+        const keys = path.match(/[^.[\]]+/g); 
+        if (!keys) 
+            return false; 
+    
+        let target = data;
+        for (let i = 0; i < keys.length - 1; i++) {
+
+            if (i === 0 && keys[i].toLowerCase() === 'root') continue;
+            
+            const key = isNaN(keys[i]) ? keys[i] : Number(keys[i]); // Convert indexes to numbers
+    
+            // Check property existence WITHOUT triggering reactivity
+            if (!Reflect.getOwnPropertyDescriptor(target, key)) {
+                target[key] = isNaN(keys[i + 1]) ? {} : [];
             }
-        });
+    
+            target = Reflect.get(target, key); // ✅ Safe access
+        }
+    
+        // Ensure only the exact property triggers reactivity
+        const lastKey = isNaN(keys[keys.length - 1]) ? keys[keys.length - 1] : Number(keys[keys.length - 1]);
+        return Reflect.set(target, lastKey, value); // ✅ Reactivity-safe set
     }
+
+    // setPathData(data, path, value) {
+    //     try {
+    //         // Adjust path to account for 'root.' as contextdata.
+    //         if (path.includes('root.')) {
+    //             path = path.replace('root.', 'contextdata.');
+    //         }
+    
+    //         // Create a dynamic function to directly set the value at the given path
+    //         // Using Reflect.set to ensure the Proxy set trap is called
+    //         new Function('contextdata', `
+    //             // Trigger the Proxy's set trap with Reflect.set to ensure reactivity
+    //             return Reflect.set(contextdata, '${path}', contextdata.value);
+    //         `)(data, value);
+    //     } catch (error) {
+    //         console.error("Error setting data:", error);
+    //     }
+    // }
+    
+    
+    
+    
 
     #createReactiveProxy(callback, data, currentpath = "root") {
       
@@ -258,8 +324,9 @@ class BareaApp {
                     return value;
                 }
 
-                dependencyTracker.track(target, key);
-
+                if (this.#enableComputedProperties)
+                    dependencyTracker.track(target, key);
+               
                 if (typeof value === 'object' && value !== null) 
                 {
                     if (!Array.isArray(value) && this.#enableBareaId && !value.hasOwnProperty('baId')) 
@@ -297,7 +364,8 @@ class BareaApp {
                 if (['length'].includes(key)) 
                     return true;
 
-                dependencyTracker.getDependency(target, key)?.notify();
+                if (this.#enableComputedProperties)
+                    dependencyTracker.notify(target,key);
 
                 const path = Array.isArray(target) ? `${currentpath}[${key}]` : `${currentpath}.${key}`;
                 callback(path, value, key);
@@ -491,32 +559,18 @@ class BareaApp {
                 item.isnew = false;
                 item.element.addEventListener("input", (event) => {
 
-                    const keys = item.path.match(/[^.[\]]+/g); // Extracts both object keys and array indices
-                    let valuekey = null;
-                    let target = this.#appDataProxy;
-
-                    keys.forEach((key, index) => {
-                        if (key.toLowerCase()!=='root')
-                        {
-                            if (typeof target[key] === 'object') 
-                                target = target[key];
-        
-                            valuekey=key;
-                        }
-                    });
-        
-                    if (!valuekey)
-                        return;
-                    if (!target)
+                    const path = item.path;
+                    if (!path)
                         return;
 
                     let attribFuncDef = item.element.getAttribute(DIR_BIND_HANDLER);
                     if (attribFuncDef)
                     {
+                        let ba_path = item.element.getAttribute(META_PATH);
+                        const dataatpath = this.getPathData(ba_path);
                         attribFuncDef=attribFuncDef.trim();
-
                         let pieces = this.#parseFunctionCall(attribFuncDef);
-                        let allparams =  [VERB_SET_DATA, item.element, target];
+                        let allparams =  [VERB_SET_DATA, item.element, dataatpath];
                         allparams.push(...pieces.params);
 
                         if (this.#methods[pieces.functionName]) {
@@ -532,22 +586,22 @@ class BareaApp {
                     {
                         if (log.active)
                             console.log(log.name, "type: " + item.element.type, "key: " + valuekey, "input value: " + item.element.checked);
-                        target[valuekey] =  item.element.checked;
+                        this.setPathData(this.#appDataProxy, path, item.element.checked);
                     } 
-                    else if ( item.element.type === "radio") 
+                    else if (item.element.type === "radio") 
                     {
                         if (log.active)
                             console.log(log.name, "type: " + item.element.type, "key: " + valuekey, "input value: " + item.element.value);
 
                         if (item.element.checked)
-                            target[valuekey] =  item.element.value;
+                            this.setPathData(this.#appDataProxy, path, item.element.value);
                     } 
                     else 
                     {
                         if (log.active)
                             console.log(log.name, "type: " + item.element.type, "key: " + valuekey, "input value: " + item.element.value);
 
-                        target[valuekey] =  item.element.value;
+                        this.setPathData(this.#appDataProxy, path, item.element.value);
                     }
                 });
 
@@ -596,8 +650,10 @@ class BareaApp {
 
         let foreacharray = [];
   
+        //throw new Error('renderTemplates was called with an object in the array');
+        //Also occurs on ba-bind to an object in the array
         if (path.includes('['))
-            return; //throw new Error('renderTemplates was called with an object in the array');
+            return; 
 
         let isSinglePush = operation === "push";
         let templates = [];
@@ -950,9 +1006,9 @@ class BareaApp {
                         }
                     }
                     
-
+                    //const dataclone = structuredClone(instance.#appDataProxy); 
                      expression=expression.replace('root.','contextdata.');
-                     boundvalue = evaluateCondition(expression, instance.#appDataProxy);
+                     boundvalue = evaluateCondition(expression, instance.#appData);
                       
                     if (t.directive===DIR_HIDE)
                         t.element.style.display = boundvalue ? "none" : ""
@@ -1039,7 +1095,10 @@ class BareaApp {
                         if (!boundvalue)
                             boundvalue="";
 
-                        t.element.value = boundvalue;
+                        if (t.element.value !== boundvalue) 
+                        {
+                            t.element.value = boundvalue;
+                        }
                     }                     
                 });
 
@@ -1264,17 +1323,16 @@ class BareaComputedProperty
 {
     constructor(getter, barea) {
       this.getter = getter;
-      //this.value = undefined;
       this.dirty = true;
       this.dependencies = new Set();
       this.barea = barea;
-      this.effect = () => {
+      this.setDirty = () => {
         this.dirty = true;
       };
     }
   
     track(dep) {
-      dep.addSubscriber(this.effect);
+      dep.addSubscriber(this.setDirty);
       this.dependencies.add(dep);
     }
   
@@ -1306,13 +1364,20 @@ class BareaComputedProperty
   
     track(target, key) 
     {
-      let dep = this.getDependency(target, key);
       if (this.activeComputed) {
-           this.activeComputed.track(dep);
+          let dep = this.#getDependency(target, key);
+          this.activeComputed.track(dep);
       }
     }
 
-    getDependency(target, key) {
+    notify(target, key) 
+    {
+       let dep = this.#getDependency(target, key);
+       if (dep)
+          dep.notify();
+    }
+
+    #getDependency(target, key) {
         let depsForTarget = this.dependencies.get(target);
         if (!depsForTarget) {
             depsForTarget = new Map();
@@ -1331,11 +1396,11 @@ class BareaComputedProperty
     #createDependency() {
         let subscribers = new Set();
         return {
-            addSubscriber(effect) {
-            subscribers.add(effect);
+            addSubscriber(set_dirty_func) {
+                subscribers.add(set_dirty_func);
             },
             notify() {
-            subscribers.forEach(effect => effect());
+                subscribers.forEach(set_dirty_func => set_dirty_func());
             }
         };
     }
