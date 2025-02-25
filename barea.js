@@ -49,17 +49,12 @@ const META_PATH = 'ba-path';
 const INTERPOL_INDEX = 'index';
 const INTERPOL_ARRCOUNT = 'count';
 
-
-
-
-
 class BareaApp {
 
     #bareaId=0;
     #enableBareaId = false;
     #enableInterpolation = true;
     #appElement; 
-    #appElementDisplay="";
     #enableHideUnloaded=false;
     #appDataProxy; 
     #methods = {};
@@ -69,8 +64,6 @@ class BareaApp {
     #mounted=false;
     #mountedHandler=null;
     #computedProperties = {};
-    #computedDependencyTracker = new Map();
-    #activeComputedKey = null;
 
     constructor(enableInternalId) 
     {
@@ -124,24 +117,22 @@ class BareaApp {
         }
 
         //Computed
-        if (content.computed) 
-        {
+        if (content.computed) {
             Object.keys(content.computed).forEach(key => {
                 if (typeof content.computed[key] === "function") {
-                    // Create a computed property that uses a getter function
-                    this.#computedProperties[key] = this.#createComputedProperty(key, content.computed[key]);
+                    this.#computedProperties[key] = new BareaComputedProperty(content.computed[key], this);
                 }
             });
-
-            // Add computed properties to the class instance (but don't overwrite existing properties)
+        
             Object.keys(this.#computedProperties).forEach(key => {
                 Object.defineProperty(this, key, {
-                    get: this.#computedProperties[key].computedGetter,
-                    enumerable: true,  // Make it enumerable so it shows up when iterating
-                    configurable: true  // Allow future changes if needed
+                    get: () => this.#computedProperties[key].value, // ✅ Correct: Uses computed value
+                    enumerable: true,
+                    configurable: true
                 });
             });
         }
+        
 
         if (content.mounted)
         {
@@ -242,32 +233,7 @@ class BareaApp {
         return target;
     }
 
-    // Method to define a computed property
-    #createComputedProperty(key, getter) {
-        let cachedValue;
-        const dependencies = new Set();
-
-        const computedGetter = () => {
-           
-            // Track dependencies
-            dependencies.clear();
-            this.#computedDependencyTracker.set(key, dependencies);  
-            this.#activeComputedKey = key;
-            cachedValue = getter.call(this);
-            this.#activeComputedKey = null;
-            return cachedValue;
-        };
-
-        // Capture initial dependencies by running the getter once
-        this.#activeComputedKey = key;
-        cachedValue = getter.call(this);
-        this.#activeComputedKey = null;
-
-        return {
-            computedGetter,
-            dependencies
-        };
-    }
+    
 
     // Triggers recomputation if a dependency changes
     #triggerRecomputation(path) {
@@ -286,18 +252,13 @@ class BareaApp {
                 const value = target[key];
                 const newPath = Array.isArray(target) ? `${currentpath}[${key}]` : `${currentpath}.${key}`;
               
-                 // Track dependencies for computed properties
-                 if (this.#activeComputedKey) {
-                    if (!this.#computedDependencyTracker.has(this.#activeComputedKey)) {
-                        this.#computedDependencyTracker.set(this.#activeComputedKey, new Set());
-                    }
-                    this.#computedDependencyTracker.get(this.#activeComputedKey).add(newPath);
-                }
-              
+
                 // If the value is already a proxy, return it as is to avoid recursive proxying
                 if (value && value.__isProxy) {
                     return value;
                 }
+
+                dependencyTracker.track(target, key);
 
                 if (typeof value === 'object' && value !== null) 
                 {
@@ -335,6 +296,8 @@ class BareaApp {
 
                 if (['length'].includes(key)) 
                     return true;
+
+                dependencyTracker.getDependency(target, key)?.notify();
 
                 const path = Array.isArray(target) ? `${currentpath}[${key}]` : `${currentpath}.${key}`;
                 callback(path, value, key);
@@ -1295,8 +1258,92 @@ class BareaApp {
        }
     }
    
-    
-
-   
-    
 }
+
+class BareaComputedProperty 
+{
+    constructor(getter, barea) {
+      this.getter = getter;
+      //this.value = undefined;
+      this.dirty = true;
+      this.dependencies = new Set();
+      this.barea = barea;
+      this.effect = () => {
+        this.dirty = true;
+      };
+    }
+  
+    track(dep) {
+      dep.addSubscriber(this.effect);
+      this.dependencies.add(dep);
+    }
+  
+    get value() {
+      if (this.dirty) {
+        // Automatically track dependencies
+        dependencyTracker.start(this);
+        this._value = this.getter.call(this.barea);
+        dependencyTracker.stop();
+        this.dirty = false;
+      }
+      return this._value;
+    }
+  }
+
+  class BareaDependencyTracker {
+    constructor() {
+      this.activeComputed = null;
+      this.dependencies = new WeakMap();
+    }
+  
+    start(computed) {
+      this.activeComputed = computed;
+    }
+  
+    stop() {
+      this.activeComputed = null;
+    }
+  
+    track(target, key) 
+    {
+      let dep = this.getDependency(target, key);
+      if (this.activeComputed) {
+           this.activeComputed.track(dep);
+      }
+    }
+
+    getDependency(target, key) {
+        let depsForTarget = this.dependencies.get(target);
+        if (!depsForTarget) {
+            depsForTarget = new Map();
+            this.dependencies.set(target, depsForTarget);
+        }
+
+        let dep = depsForTarget.get(key);
+        if (!dep) {
+            dep = this.#createDependency();
+            depsForTarget.set(key, dep);
+        }
+
+        return dep;
+    }
+
+    #createDependency() {
+        let subscribers = new Set();
+        return {
+            addSubscriber(effect) {
+            subscribers.add(effect);
+            },
+            notify() {
+            subscribers.forEach(effect => effect());
+            }
+        };
+    }
+
+  }
+  
+
+  
+//For computed properties
+const dependencyTracker = new BareaDependencyTracker(); 
+

@@ -332,17 +332,18 @@
 
                 sortedShows:function()
                 {
-                    return this.getData().model.shows.sort((a, b) => {
-                            let modifier = 1;
+                    return [];
+                    // return this.getData().model.shows.sort((a, b) => {
+                    //         let modifier = 1;
                            
-                                if (a['Note'] < b['Note']) 
-                                    return -1 * modifier;
+                    //             if (a['Note'] < b['Note']) 
+                    //                 return -1 * modifier;
 
-                                if (a['Note'] > b['Note']) 
-                                    return 1 * modifier;
+                    //             if (a['Note'] > b['Note']) 
+                    //                 return 1 * modifier;
                                     
-                                return 0;
-                            });
+                    //             return 0;
+                    //         });
                                 
 
                 },
@@ -365,6 +366,10 @@
          bareaapp.getData().createdByFirstName = 'Stellan';
 
          console.log(bareaapp.createdByFullName);
+
+         bareaapp.getData().createdByLastName = 'Nilsson';
+
+        console.log(bareaapp.createdByFullName);
        
 
         
