@@ -532,7 +532,7 @@ class BareaApp
 
                     if (exprtype==EXPR_TYPE_PATH && !el.hasOwnProperty('_bareaObject'))
                     {
-                          let objpath = this.#getSecondLastKeyFromPath(exprtype);
+                          let objpath = this.#getLastObjectPath(exprtype);
                           el._bareaObject=this.getProxifiedPathData(objpath);
                           el._bareaKey=this.#getLastKeyFromPath(item.path);
 
@@ -688,7 +688,7 @@ class BareaApp
                     if (!(item.element._bareaObject && item.element._bareaKey))
                     {
                         //User created element
-                        let objpath = this.#getSecondLastKeyFromPath(item.path);
+                        let objpath = this.#getLastObjectPath(item.path);
                         item.element._bareaObject=this.getProxifiedPathData(objpath);
                         item.element._bareaKey=this.#getLastKeyFromPath(item.path);
                     }
@@ -1054,22 +1054,19 @@ class BareaApp
                             
                 });
 
-                const bareabind = instance.#domDictionary.filter(p=>p.directive===DIR_BIND && ((instance.#isPrimitive(value) && (p.path===path)) || (!instance.#isPrimitive(value) && (p.path!==""))));
+                const bareabind = instance.#domDictionary.filter(p=>p.directive===DIR_BIND && instance.#isPrimitive(value));
                 bareabind.forEach(t=>
                 {
-                    let boundvalue = value;
-                    if (bareabind.length> 1 || !instance.#isPrimitive(boundvalue)){
-                        if (instance.#getExpressionType(t.path, DIR_BIND)===EXPR_TYPE_PATH)
-                        {
 
-                        }
-                        else if (instance.#getExpressionType(t.path, DIR_BIND)===EXPR_TYPE_OBJREF_PATH)
-                        {
+                    let obj_path = instance.#getLastObjectPath(path);
+                    let changed_object = instance.getProxifiedPathData(obj_path);
+                    if (!changed_object)
+                        return;
 
-                        }
-                    }
-                    /*
-                    boundvalue = instance.getPathData(t.path);
+                    if (!t.element._bareaObject===changed_object)
+                        return;
+
+                  
                     let attribFuncDef = t.element.getAttribute(DIR_BIND_HANDLER);
                     if (attribFuncDef)
                     {
@@ -1078,7 +1075,7 @@ class BareaApp
                             return;
                      
                         let pieces = instance.#parseFunctionCall(attribFuncDef);
-                        let allparams = [VERB_SET_UI, t.element, boundvalue];
+                        let allparams = [VERB_SET_UI, t.element, value];
                         allparams.push(...pieces.params);
 
                         if (instance.#methods[pieces.functionName]) {
@@ -1092,26 +1089,26 @@ class BareaApp
 
                     if (t.element.type === "checkbox") 
                     {
-                        if (!boundvalue)
-                            boundvalue=false;
+                        if (!value)
+                            value=false;
 
-                        t.element.checked = boundvalue;
+                        t.element.checked = value;
                     } 
                     else if (t.element.type === "radio")
                     {
-                        t.element.checked = t.element.value === boundvalue;
+                        t.element.checked = t.element.value === value;
                     } 
                     else 
                     {
-                        if (!boundvalue)
-                            boundvalue="";
+                        if (!value)
+                            value="";
 
-                        if (t.element.value !== boundvalue) 
+                        if (t.element.value !== value) 
                         {
-                            t.element.value = boundvalue;
+                            t.element.value = value;
                         }
                     }       
-                        */              
+                                    
                 });
 
 /*
@@ -1185,16 +1182,29 @@ class BareaApp
         return key;
     }
 
-    #getSecondLastKeyFromPath(path)
+    #getLastObjectPath(path)
     {
         if (!path)
             return 'root';
 
+        let retval = null;
+        let count = 0;
         let keys = path.split('.');
-        if (keys.length>=2)
-            return keys[keys.length-2];
+        keys.forEach(t=>
+        {
+            count++;
+            if (!retval)
+                retval=t
+            else
+                retval+='.'+t;
 
-        return 'root';
+            if (count===(keys.length-2))
+                return;
+
+        });
+         
+        return retval;
+
     }
 
     #parseFunctionCall(str) {
