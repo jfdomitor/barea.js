@@ -30,8 +30,8 @@ const DIR_INTERPOLATION = 'interpolation';
 const DIR_TYPE_BINDING = 'binding';
 const DIR_TYPE_HANDLER = 'uihandler';
 const DIR_TYPE_UI_SETTER = 'uisetter';
-const DIR_TYPE_BOOLHANDLER = 'boolhandler';
-const DIR_TYPE_BOOLEXPR = 'boolexpression';
+const DIR_TYPE_COMPUTED = 'computed';
+const DIR_TYPE_BOOLEXPR = 'computedexpression';
 const DIR_TYPE_TEMPLATE = 'template';
 
 
@@ -47,7 +47,17 @@ const META_PATH = 'ba-path';
 
 // Special interpolation expressions
 const INTERPOL_INDEX = 'index';
-const INTERPOL_ARRCOUNT = 'count';
+
+
+//Expression types
+const EXPR_TYPE_PATH = 'path';
+const EXPR_TYPE_HANDLER = 'handler';
+const EXPR_TYPE_COMPUTED = 'computed';
+const EXPR_TYPE_OBJREF = 'objref';
+const EXPR_TYPE_OBJREF_PATH = 'objpath';
+const EXPR_TYPE_OBJREF_EXPR = 'objexpr';
+const EXPR_TYPE_EXPR = 'expr';
+
 
 class BareaApp 
 {
@@ -63,6 +73,7 @@ class BareaApp
     #mounted=false;
     #mountedHandler=null;
     #computedProperties = {};
+    #computedKeys = [];
     #enableBareaId = false;
     #enableInterpolation = true;
     #enableHideUnloaded=false;
@@ -126,12 +137,13 @@ class BareaApp
                 if (typeof content.computed[key] === "function") {
                     this.#enableComputedProperties=true;
                     this.#computedProperties[key] = new BareaComputedProperty(content.computed[key], this);
+                    this.#computedKeys.push(key);
                 }
             });
         
             Object.keys(this.#computedProperties).forEach(key => {
                 Object.defineProperty(this, key, {
-                    get: () => this.#computedProperties[key].value, // ✅ Correct: Uses computed value
+                    get: () => this.#computedProperties[key].value, 
                     enumerable: true,
                     configurable: true
                 });
@@ -389,6 +401,14 @@ class BareaApp
    
                 if (attr.name===DIR_FOREACH)
                 {
+                    if (!attr.value)
+                        return;
+                    if (this.#getExpressionType(attr.value, DIR_FOREACH)==='INVALID')
+                    {
+                        console.error(`Then ${DIR_FOREACH} directive has an invalid value (${attr.value}).`);
+                        return;
+                    }
+
                     let templateHtml = el.innerHTML.trim()
                         .replace(/>\s+</g, '><')  // Remove spaces between tags
                         .replace(/(\S)\s{2,}(\S)/g, '$1 $2'); // Reduce multiple spaces to one inside text nodes
@@ -400,13 +420,18 @@ class BareaApp
 
                 if ([DIR_HIDE, DIR_SHOW, DIR_IF,DIR_CLASS_IF].includes(attr.name))
                 {
-                   
+                    const exprtype = this.#getExpressionType(attr.value, attr.name);
                     if (!attr.value)
                         return;
-
-                    let ishandler=false;
-                    if (this.#isValidHandlerName(attr.value))
-                        ishandler=true;
+                    if (exprtype==='INVALID')
+                    {
+                        console.error(`Then ${attr.name} directive has an invalid value (${attr.value}).`);
+                        return;
+                    }
+          
+                    let iscomputed=false;
+                    if (exprtype === EXPR_TYPE_COMPUTED)
+                        iscomputed=true;
 
                     let expressions=[];
                     //A DIR_CLASS_IF expression contains both an express/handler and class name(s) 
@@ -420,8 +445,8 @@ class BareaApp
                         expressions.push(attr.value);
                     }
 
-                    if (ishandler){
-                        const odo = this.#createDomDictionaryObject(el,el.parentElement,null,attr.name,"", DIR_TYPE_BOOLHANDLER, true,"","",templateId,expressions);
+                    if (iscomputed){
+                        const odo = this.#createDomDictionaryObject(el,el.parentElement,null,attr.name,"", DIR_TYPE_COMPUTED, true,"","",templateId,expressions);
                         this.#domDictionary.push(odo);
                     }
                     else
@@ -447,8 +472,18 @@ class BareaApp
                                 }
                             }
                             
-                            condition=condition.replace('root.','contextdata.');
-                            return evaluateCondition(condition, this.#appDataProxy);
+                            if (exprtype===EXPR_TYPE_EXPR)
+                            {
+                                condition=condition.replace('root.','contextdata.');
+                                return evaluateCondition(condition, this.#appDataProxy);
+                            }
+                            else
+                            {
+                                //EXPR_TYPE_OBJREF_EXPR, example: show.showText===true
+                                //TODO: get object from row, get objkeyname = show
+                                //condition=condition.replace(objkeyname+'.','contextdata.');
+                                //return evaluateCondition(condition, rowobject);
+                            }
                         }
 
                         //Make up a functionname
@@ -457,6 +492,7 @@ class BareaApp
                         expressions.push(funcname);
                         this.#enableComputedProperties=true;
                         this.#computedProperties[funcname] = new BareaComputedProperty(boolfunc, this);
+                        this.#computedKeys.push(funcname);
                         const odo = this.#createDomDictionaryObject(el,el.parentElement,null,attr.name,"", DIR_TYPE_BOOLEXPR, true,"","",templateId,expressions);
                         this.#domDictionary.push(odo);
                     }
@@ -466,10 +502,15 @@ class BareaApp
 
                 if ([DIR_CLASS, DIR_IMAGE_SRC,DIR_HREF].includes(attr.name))
                 {
-                    if (attr.name===DIR_IMAGE_SRC && el.localName.toLowerCase()!=="img")
-                        return;
-
                     if (!attr.value)
+                        return;
+                    if (this.#getExpressionType(attr.value, attr.name)==='INVALID')
+                    {
+                        console.error(`Then ${attr.name} directive has an invalid value (${attr.value}).`);
+                        return;
+                    }
+
+                    if (attr.name===DIR_IMAGE_SRC && el.localName.toLowerCase()!=="img")
                         return;
 
                     const odo = this.#createDomDictionaryObject(el,el.parentElement,null,attr.name,attr.value, DIR_TYPE_UI_SETTER, true,"","",templateId,null);
@@ -481,9 +522,9 @@ class BareaApp
                 {
                     if (!attr.value)
                         return;
-                    if (!attr.value.includes('root.'))
+                    if (this.#getExpressionType(attr.value, DIR_BIND)==='INVALID')
                     {
-                        console.error(`Then ${DIR_BIND} directive has an invalid path (${attr.value}), should begin with root.`);
+                        console.error(`Then ${DIR_BIND} directive has an invalid (${attr.value}).`);
                         return;
                     }
 
@@ -493,8 +534,14 @@ class BareaApp
 
                 if (DIR_CLICK === attr.name)
                 {
-                    if (!this.#isValidHandlerName(attr.value))
+                    if (!attr.value)
                         return;
+
+                    if (this.#getExpressionType(attr.value, DIR_CLICK)==='INVALID')
+                    {
+                        console.error(`Then ${DIR_CLICK} directive has an invalid (${attr.value}).`);
+                        return;
+                    }
 
                     let expressions=[];
                     expressions.push(attr.value);
@@ -579,7 +626,7 @@ class BareaApp
                         if (!(item.element._bareaObject && item.element._bareaKey))
                         {
                               //User created element
-                            let objpath = this.#getLastObjectKeyFromPath(item.path);
+                            let objpath = this.#getSecondLastKeyFromPath(item.path);
                             item.element._bareaObject=this.getProxifiedPathData(objpath);
                             item.element._bareaKey=this.#getLastKeyFromPath(item.path);
                         }
@@ -648,7 +695,7 @@ class BareaApp
                     if (!(item.element._bareaObject && item.element._bareaKey))
                     {
                         //User created element
-                        let objpath = this.#getLastObjectKeyFromPath(item.path);
+                        let objpath = this.#getSecondLastKeyFromPath(item.path);
                         item.element._bareaObject=this.getProxifiedPathData(objpath);
                         item.element._bareaKey=this.#getLastKeyFromPath(item.path);
                     }
@@ -698,7 +745,7 @@ class BareaApp
             if (!varname)
                 throw new Error(`No variable name was found in the ${DIR_FOREACH} expression`);
 
-            if (this.#isValidHandlerName(datapath))
+            if (this.#getExpressionType(datapath, DIR_FOREACH)===EXPR_TYPE_COMPUTED)
             {
                 let pieces = this.#parseFunctionCall(datapath);
                 if (pieces.functionName)
@@ -737,74 +784,62 @@ class BareaApp
 
             foreacharray.forEach(item => {
                 const newtag = document.createElement(template.templateTagName);
-                //let interpolationpaths = this.#getInterpolationPaths(template.templateMarkup);
-                // if (interpolationpaths.length>0)
-                // {
-                //     let regex = new RegExp(`{{([^}]*)\\b${varname}\\b([^}]*)}}`, "g");
-                //     newtag.innerHTML = template.templateMarkup.replace(regex, (match, before, after) => {return `{{${before}${datapath}[${counter}]${after}}}`});
-                // }
-                // else
-                // {
-                //     newtag.innerHTML = template.templateMarkup;
-                // }
               
                 newtag.innerHTML = template.templateMarkup;
-                newtag._bareaData = item;
+                newtag.setAttribute(META_ARRAY_VARNAME, varname);
+                //newtag.setAttribute(META_PATH, `${datapath}[${counter}]`);
+                newtag.setAttribute(META_ARRAY_INDEX, counter);
+                newtag._bareaObject = item;
                 if (newtag.id)
                     newtag.id = newtag.id + `-${counter}` 
                 else
                     newtag.id = `${template.id}-${varname}-${counter}`; 
 
                 fragment.appendChild(newtag);
-               
-                //Add references to click handlers
-                newtag.querySelectorAll(`[${DIR_CLICK}]`).forEach(el => 
-                {
-                    el._bareaData = item;
-                    // el.setAttribute(META_ARRAY_VARNAME, varname);
-                    // el.setAttribute(META_PATH, `${datapath}[${counter}]`);
-                    // el.setAttribute(META_ARRAY_INDEX, counter);
-                });
-
+            
                 newtag.querySelectorAll(`[${DIR_IF}], [${DIR_HIDE}], [${DIR_SHOW}], [${DIR_CLASS_IF}], [${DIR_CLICK}], [${DIR_BIND}]`).forEach(el => 
                 {
                     el._bareaObject = item;
+                    el.setAttribute(META_ARRAY_VARNAME, varname);
+                    // el.setAttribute(META_PATH, `${datapath}[${counter}]`);
+                    el.setAttribute(META_ARRAY_INDEX, counter);
+
                     if (el.hasAttribute(DIR_IF)) {
-                        let attrib = el.getAttribute(DIR_IF);
-                        if (!this.#isValidHandlerName(attrib))
-                        {
-                            if (!attrib.includes(varname + '.'))
-                                console.warn(`The ${DIR_IF} expression ${attrib} used in an element under ${DIR_FOREACH} does not match the ${DIR_FOREACH} expression, should reference '${varname}'.`);
-                        }
+                        // let attrib = el.getAttribute(DIR_IF);
+                        // if (!this.#isValidHandlerName(attrib))
+                        // {
+                        //     if (!attrib.includes(varname + '.'))
+                        //         console.warn(`The ${DIR_IF} expression ${attrib} used in an element under ${DIR_FOREACH} does not match the ${DIR_FOREACH} expression, should reference '${varname}'.`);
+                        // }
                     }
                     if (el.hasAttribute(DIR_CLASS_IF)) {
-                        let attrib = el.getAttribute(DIR_CLASS_IF);
-                        if (!this.#isValidHandlerName(attrib))
-                        {
-                            if (!attrib.includes(varname + '.'))
-                                console.warn(`The ${DIR_CLASS_IF} expression ${attrib} used in an element under ${DIR_FOREACH} does not match the ${DIR_FOREACH} expression, should reference '${varname}'.`);
-                        }
+                        // let attrib = el.getAttribute(DIR_CLASS_IF);
+                        // if (!this.#isValidHandlerName(attrib))
+                        // {
+                        //     if (!attrib.includes(varname + '.'))
+                        //         console.warn(`The ${DIR_CLASS_IF} expression ${attrib} used in an element under ${DIR_FOREACH} does not match the ${DIR_FOREACH} expression, should reference '${varname}'.`);
+                        // }
                     }
                     if (el.hasAttribute(DIR_HIDE)) {
-                        let attrib = el.getAttribute(DIR_HIDE);
-                        if (!this.#isValidHandlerName(attrib))
-                        {
-                            if (!attrib.includes(varname + '.'))
-                                console.warn(`The ${DIR_HIDE} expression ${attrib} used in an element under ${DIR_FOREACH} does not match the ${DIR_FOREACH} expression, should reference '${varname}'.`);
-                        }
+                        // let attrib = el.getAttribute(DIR_HIDE);
+                        // if (!this.#isValidHandlerName(attrib))
+                        // {
+                        //     if (!attrib.includes(varname + '.'))
+                        //         console.warn(`The ${DIR_HIDE} expression ${attrib} used in an element under ${DIR_FOREACH} does not match the ${DIR_FOREACH} expression, should reference '${varname}'.`);
+                        // }
                     }
                     if (el.hasAttribute(DIR_SHOW)) {
-                        let attrib = el.getAttribute(DIR_SHOW);
-                        if (!this.#isValidHandlerName(attrib))
-                        {
-                            if (!attrib.includes(varname + '.'))
-                                console.warn(`The ${DIR_SHOW} expression ${attrib} used in an element under ${DIR_FOREACH} does not match the ${DIR_FOREACH} expression, should reference '${varname}'.`);
-                        }
+                        // let attrib = el.getAttribute(DIR_SHOW);
+                        // if (!this.#isValidHandlerName(attrib))
+                        // {
+                        //     if (!attrib.includes(varname + '.'))
+                        //         console.warn(`The ${DIR_SHOW} expression ${attrib} used in an element under ${DIR_FOREACH} does not match the ${DIR_FOREACH} expression, should reference '${varname}'.`);
+                        // }
                     }
                     if (el.hasAttribute(DIR_BIND)) {
                         let attrib = el.getAttribute(DIR_BIND);
                         if (!attrib.includes(varname + '.'))
-                            console.warn(`The ${DIR_SHOW} expression ${attrib} used in an element under ${DIR_FOREACH} does not match the ${DIR_FOREACH} expression, should reference '${varname}'.`);
+                            console.warn(`The ${DIR_BIND} expression ${attrib} used in an element under ${DIR_FOREACH} does not match the ${DIR_FOREACH} expression, should reference '${varname}'.`);
                     
                         el._bareaKey=this.#getLastKeyFromPath(attrib);
                     }
@@ -812,23 +847,6 @@ class BareaApp
                     
                 });
 
-                
-                // let templatechildren = newtag.querySelectorAll("*"); 
-                // templatechildren.forEach(child => 
-                // {
-                //     if (child.id)
-                //         child.id = child.id + `-${counter}` 
-                //     else
-                //         child.id = `${varname}-${counter}`; 
-
-                //     let forattrib = child.getAttribute("for");
-                //     if (forattrib)
-                //         child.setAttribute("for", forattrib + `-${counter}`); 
-                   
-
-                // });
-    
-
                 this.#buildDomDictionary(newtag, template.id);
 
                 counter++;
@@ -841,223 +859,10 @@ class BareaApp
         });    
     }
 
-  /*
-    #renderTemplates(operation='init', path='root', array=this.#appDataProxy) 
-    {
-
-        let foreacharray = [];
   
-        //throw new Error('renderTemplates was called with an object in the array');
-        //Also occurs on ba-bind to an object in the array
-        if (path.includes('['))
-            return; 
-
-        let isSinglePush = operation === "push";
-        let templates = [];
-        if (path.toLowerCase()==='root')
-            templates = this.#domDictionary.filter(p=> p.directivetype===DIR_TYPE_TEMPLATE);
-        else
-            templates = this.#domDictionary.filter(p=> p.path.includes(path) && p.directivetype===DIR_TYPE_TEMPLATE);
-
-        templates.forEach(template => {
-
-            let [varname, datapath] = template.path.split(" in ").map(s => s.trim());
-            if (!varname)
-                throw new Error(`No variable name was found in the ${DIR_FOREACH} expression`);
-
-            if (this.#isValidHandlerName(datapath))
-            {
-                let pieces = this.#parseFunctionCall(datapath);
-                if (pieces.functionName)
-                {
-                    foreacharray = this.#computedProperties[pieces.functionName].value;
-                }
-                else
-                {
-                    console.warn(`Could not find computed function name in the ${DIR_FOREACH} directive`);
-                }
-            }
-            else
-            {
-                foreacharray = this.getPathData(datapath); 
-            }
-            
-            if (!Array.isArray(foreacharray))
-                return; //throw new Error('renderTemplates could not get array, ' + path);
-
-           if ((foreacharray.length - template.element.children.length) !== 1)
-                isSinglePush=false;
-
-           let counter=0;
-            if (!isSinglePush)
-            {
-                this.#removeTemplateChildrenFromDomDictionary(template.id);
-                template.parentelement.innerHTML = ""; // Clear list
-            }
-            else
-            {
-                counter = foreacharray.length-1;
-                foreacharray = foreacharray.slice(-1);
-            }
-
-            const fragment = document.createDocumentFragment();
-
-            foreacharray.forEach(item => {
-                const newtag = document.createElement(template.templateTagName);
-                let interpolationpaths = this.#getInterpolationPaths(template.templateMarkup);
-                if (interpolationpaths.length>0)
-                {
-                    let regex = new RegExp(`{{([^}]*)\\b${varname}\\b([^}]*)}}`, "g");
-                    newtag.innerHTML = template.templateMarkup.replace(regex, (match, before, after) => {return `{{${before}${datapath}[${counter}]${after}}}`});
-                }
-                else
-                {
-                    newtag.innerHTML = template.templateMarkup;
-                }
-              
-                newtag.setAttribute(META_ARRAY_VARNAME, varname);
-                newtag.setAttribute(META_PATH, `${datapath}[${counter}]`);
-                newtag.setAttribute(META_ARRAY_INDEX, counter);
-                if (newtag.id)
-                    newtag.id = newtag.id + `-${counter}` 
-                else
-                    newtag.id = `${template.id}-${varname}-${counter}`; 
-
-                fragment.appendChild(newtag);
-               
-                //Add references to click handlers
-                newtag.querySelectorAll(`[${DIR_CLICK}]`).forEach(el => 
-                {
-                    el.setAttribute(META_ARRAY_VARNAME, varname);
-                    el.setAttribute(META_PATH, `${datapath}[${counter}]`);
-                    el.setAttribute(META_ARRAY_INDEX, counter);
-                });
-
-                newtag.querySelectorAll(`[${DIR_IF}], [${DIR_HIDE}], [${DIR_SHOW}], [${DIR_CLASS_IF}]`).forEach(el => 
-                {
-                
-                    if (el.hasAttribute(DIR_IF)) {
-                        let attrib = el.getAttribute(DIR_IF);
-
-                         //Expression exist in the attribute
-                        if (!this.#isValidHandlerName(attrib))
-                        {
-                            if (!attrib.includes(varname + '.') && !attrib.includes('root.'))
-                                console.warn(`The ${DIR_IF} expression ${attrib} used in an element under ${DIR_FOREACH} does not match the ${DIR_FOREACH} expression, should reference '${varname}' or root`);
-                            
-                            //Convert to fullpath expression example: car.value =>  root.model.cars[4].value
-                            let newexpr = attrib;
-                            if (attrib.includes(varname + '.')){
-                                newexpr = attrib.replaceAll(varname + '.',`${datapath}[${counter}].`);
-                                el.setAttribute(DIR_IF, newexpr);
-                            }     
-                        }
-                    }
-
-                    if (el.hasAttribute(DIR_CLASS_IF)) {
-                        let attrib = el.getAttribute(DIR_CLASS_IF);
-
-                         //Expression exist in the attribute
-                        if (!this.#isValidHandlerName(attrib))
-                        {
-                            if (!attrib.includes(varname + '.') && !attrib.includes('root.'))
-                                console.warn(`The ${DIR_CLASS_IF} expression ${attrib} used in an element under ${DIR_FOREACH} does not match the ${DIR_FOREACH} expression, should reference '${varname}' or root`);
-                            
-                            //Convert to fullpath expression example: car.value =>  root.model.cars[4].value
-                            let newexpr = attrib;
-                            if (attrib.includes(varname + '.')){
-                                newexpr = attrib.replaceAll(varname + '.',`${datapath}[${counter}].`);
-                                el.setAttribute(DIR_CLASS_IF, newexpr);
-                            }     
-                        }
-                    }
-
-                    if (el.hasAttribute(DIR_HIDE)) {
-                        let attrib = el.getAttribute(DIR_HIDE);
-
-                         //Expression exist in the attribute
-                        if (!this.#isValidHandlerName(attrib))
-                        {
-                            if (!attrib.includes(varname + '.') && !attrib.includes('root.'))
-                                console.warn(`The ${DIR_HIDE} expression ${attrib} used in an element under ${DIR_FOREACH} does not match the ${DIR_FOREACH} expression, should reference '${varname}' or root`);
-                            
-                            //Convert to fullpath expression example: car.value =>  root.model.cars[4].value
-                            let newexpr = attrib;
-                            if (attrib.includes(varname + '.')){
-                                newexpr = attrib.replaceAll(varname + '.',`${datapath}[${counter}].`);
-                                el.setAttribute(DIR_HIDE, newexpr);
-                            }     
-                        }
-                    }
-
-                    if (el.hasAttribute(DIR_SHOW)) {
-                        let attrib = el.getAttribute(DIR_SHOW);
-
-                         //Expression exist in the attribute
-                        if (!this.#isValidHandlerName(attrib))
-                        {
-                            if (!attrib.includes(varname + '.') && !attrib.includes('root.'))
-                                console.warn(`The  ${DIR_SHOW} expression ${attrib} used in an element under ${DIR_FOREACH} does not match the ${DIR_FOREACH} expression, should reference '${varname}' or root`);
-                            
-                            //Convert to fullpath expression example: car.value =>  root.model.cars[4].value
-                            let newexpr = attrib;
-                            if (attrib.includes(varname + '.')){
-                                newexpr = attrib.replaceAll(varname + '.',`${datapath}[${counter}].`);
-                                el.setAttribute(DIR_SHOW, newexpr);
-                            }     
-                        }
-                    }
-                    
-                });
-
-                
-                //Add references to input bindings
-                newtag.querySelectorAll(`[${DIR_BIND}]`).forEach(el => 
-                {
-                    el.setAttribute(META_ARRAY_VARNAME, varname);
-                    el.setAttribute(META_PATH, `${datapath}[${counter}]`);
-                    el.setAttribute(META_ARRAY_INDEX, counter);
-                    let attrib = el.getAttribute(DIR_BIND);
-                    if (!attrib.includes(varname + '.'))
-                        console.warn(`The ${DIR_BIND} binding ${attrib} used in an element under ${DIR_FOREACH} does not match the ${DIR_FOREACH} expression, should include '${varname}'`);
-
-                    //Convert to fullpath expression example: car.value =>  root.model.cars[4].value
-                    let bindingpath = attrib.replace(varname+'.',`${datapath}[${counter}].`);
-                    el.setAttribute(DIR_BIND, bindingpath);
-
-                });
-
-                let templatechildren = newtag.querySelectorAll("*"); 
-                templatechildren.forEach(child => 
-                {
-                    if (child.id)
-                        child.id = child.id + `-${counter}` 
-                    else
-                        child.id = `${varname}-${counter}`; 
-
-                    let forattrib = child.getAttribute("for");
-                    if (forattrib)
-                        child.setAttribute("for", forattrib + `-${counter}`); 
-                   
-
-                });
-    
-
-                this.#buildDomDictionary(newtag, template.id);
-
-                counter++;
-
-            });
-
-            if (fragment.childElementCount>0)
-                template.parentelement.appendChild(fragment);
-           
-        });    
-    }
-*/
     #applyProxyChangesToDOM(path='root', value=this.#appDataProxy) 
     {
-      
+    
         //console.log(path, value);
         function interpolate(instance)
         {
@@ -1071,43 +876,30 @@ class BareaApp
                     //Just to speed up
                     //If primitive (path), example : root.model.user.firstname
                     //Only interpolate root, root.model, root.model.user, root.model.user.firstname
-                    if (instance.#isPrimitive(value))
+                    if (instance.#isPrimitive(value) && expr.includes('root'))
                     {
                         if (!path.includes(expr))
                             return;
                     }
 
-                   
-
-                    // if (expr.toLowerCase()=== INTERPOL_INDEX)
-                    //     exprvalue = instance.#getClosestAttribute(t.element, META_ARRAY_INDEX);
-                    // if (expr.endsWith('.'+INTERPOL_ARRCOUNT))
-                    // {
-                    //     let arrpath = "";
-                    //     let parts = expr.split('.');
-                    //     parts.forEach(p=>
-                    //     {
-                    //         if (p===INTERPOL_ARRCOUNT)
-                    //             return;
-
-                    //         if (arrpath==='')
-                    //             arrpath+=p;
-                    //         else
-                    //             arrpath+='.'+p;
-                            
-                    //     });
-                    //     if (arrpath)
-                    //     {
-                    //         exprvalue = instance.getPathData(arrpath);
-                    //         if (Array.isArray(exprvalue))
-                    //             exprvalue=exprvalue.length;
-                    //     }
-                        
-                    // }
-                    // else
-                    
                     let exprvalue = null;
-                    exprvalue = instance.getPathData(expr);
+                    let exprtype = instance.#getExpressionType(expr, DIR_INTERPOLATION);
+                    if (exprtype===EXPR_TYPE_COMPUTED){
+                        exprvalue=instance.#computedProperties[expr].value;
+                    }else if (exprtype===EXPR_TYPE_PATH){
+                        exprvalue = instance.getPathData(expr);
+                    }else if (exprtype===EXPR_TYPE_OBJREF){
+                        exprvalue = instance.#getClosestBareaObject(t.element);
+                    }
+                    else if (exprtype===EXPR_TYPE_OBJREF_PATH){
+                        let subobj = instance.#getClosestBareaObject(t.element);
+                        let key =  instance.#getLastKeyFromPath(expr);
+                        exprvalue = subobj[key];
+                    }
+                    else if (expr === INTERPOL_INDEX)
+                    {
+                        exprvalue = instance.#getClosestAttribute(t.element, META_ARRAY_INDEX);
+                    }
 
                     if (!exprvalue)
                         exprvalue ="";
@@ -1130,25 +922,18 @@ class BareaApp
        
         function updateElements(path, value, instance)
         {
-                //Boolean handlers (react on any data change)
-                const boolhandlers = instance.#domDictionary.filter(p=> p.directivetype === DIR_TYPE_BOOLHANDLER);
-                boolhandlers.forEach(t=>
+                //Computed handlers get cashed value (updates when used by other, become dirty)
+                const computedfuncs = instance.#domDictionary.filter(p=> p.directivetype === DIR_TYPE_COMPUTED);
+                computedfuncs.forEach(t=>
                 {
-                    const path = instance.#getClosestAttribute(t.element, META_PATH); 
-                    let data = instance.getPathData(path);
                   
                     let attribFuncDef = t.expressions[0];
                     let boundvalue = false;
                     attribFuncDef=attribFuncDef.trim();
-
-                    let allparams = [data];
-                    let pieces = instance.#parseFunctionCall(attribFuncDef);
-                    allparams.push(...pieces.params);
-
-                    if (instance.#computedProperties[pieces.functionName]) {
-                            boundvalue = instance.#computedProperties[pieces.functionName].value;
+                    if (instance.#computedProperties[attribFuncDef]) {
+                            boundvalue = instance.#computedProperties[attribFuncDef].value;
                     } else {
-                        console.warn(`Computed boolean handler '${pieces.functionName}' not found.`);
+                        console.warn(`Computed boolean handler '${pattribFuncDef}' not found.`);
                     }
                     
                     if (t.directive===DIR_HIDE)
@@ -1266,16 +1051,25 @@ class BareaApp
                 bareabind.forEach(t=>
                 {
                     let boundvalue = value;
-                    if (bareabind.length> 1 || !instance.#isPrimitive(boundvalue))
-                        boundvalue = instance.getPathData(t.path);
+                    if (bareabind.length> 1 || !instance.#isPrimitive(boundvalue)){
+                        if (instance.#getExpressionType(t.path, DIR_BIND)===EXPR_TYPE_PATH)
+                        {
 
+                        }
+                        else if (instance.#getExpressionType(t.path, DIR_BIND)===EXPR_TYPE_OBJREF_PATH)
+                        {
+
+                        }
+                    }
+                    /*
+                    boundvalue = instance.getPathData(t.path);
                     let attribFuncDef = t.element.getAttribute(DIR_BIND_HANDLER);
                     if (attribFuncDef)
                     {
                         attribFuncDef=attribFuncDef.trim();
-                        if (!instance.#isValidHandlerName(attribFuncDef))
+                        if (instance.#getExpressionType(attribFuncDef, DIR_BIND_HANDLER)==="INVALID")
                             return;
-
+                     
                         let pieces = instance.#parseFunctionCall(attribFuncDef);
                         let allparams = [VERB_SET_UI, t.element, boundvalue];
                         allparams.push(...pieces.params);
@@ -1309,9 +1103,11 @@ class BareaApp
                         {
                             t.element.value = boundvalue;
                         }
-                    }                     
+                    }       
+                        */              
                 });
 
+/*
                 
                 const bareaclass = instance.#domDictionary.filter(p=>p.directive===DIR_CLASS && p.directivetype===DIR_TYPE_UI_SETTER && ((instance.#isPrimitive(value) && (p.path===path)) || (!instance.#isPrimitive(value) && (p.path!==""))));
                 bareaclass.forEach(t=>
@@ -1354,7 +1150,7 @@ class BareaApp
                     }
             
                 });
-
+*/
            
         }
 
@@ -1382,7 +1178,7 @@ class BareaApp
         return key;
     }
 
-    #getLastObjectKeyFromPath(path)
+    #getSecondLastKeyFromPath(path)
     {
         if (!path)
             return 'root';
@@ -1429,16 +1225,107 @@ class BareaApp
         return { functionName, params };
     }
     
-    // #getExpressionType(expression) 
-    // {
-    //    if (expression.toLowerCase().includes('root'))
+    #getExpressionType(expression, directive) 
+    {
+        if ([DIR_CLASS, DIR_BIND, DIR_IMAGE_SRC, DIR_HREF].includes(directive))
+        {
+            if (expression.includes('(') || expression.includes(')'))
+                return "INVALID";
 
-    // }
+            if (!(expression.includes('.')))
+                return "INVALID";
+
+            if (expression.toLowerCase().startsWith('root.'))
+                return EXPR_TYPE_PATH;
+
+            return EXPR_TYPE_OBJREF_PATH;
+        }
+
+        if ([DIR_CLICK, DIR_BIND_HANDLER].includes(directive))
+        {
+            if (!(expression.includes('(') && expression.includes(')')))
+                return "INVALID";
+
+            return EXPR_TYPE_HANDLER;
+        }
+
+        if ([DIR_HIDE, DIR_SHOW, DIR_IF,DIR_CLASS_IF].includes(directive))
+        {
+            if (expression.includes('(') || expression.includes(')'))
+                return "INVALID";
+
+            if ((expression.includes('root.')))
+                return EXPR_TYPE_EXPR;
+
+            if (!(expression.includes('.')))
+                return EXPR_TYPE_COMPUTED;
+  
+            return EXPR_TYPE_OBJREF_EXPR;
+        }
+
+        if (directive === DIR_FOREACH)
+        {
+            if ((expression.includes('root.')))
+                return EXPR_TYPE_PATH;
+
+            if (!(expression.includes('.')))
+                return EXPR_TYPE_COMPUTED;
+
+            return "INVALID";
+        }
+
+        if (directive === DIR_INTERPOLATION)
+        {
+            if (expression.includes('(') || expression.includes(')'))
+                return "INVALID";
+
+            if (expression.toLowerCase() === INTERPOL_INDEX)
+                return INTERPOL_INDEX;
+
+            if (expression.toLowerCase().startsWith('root.'))
+                return EXPR_TYPE_PATH;
+
+            if (expression.includes('.'))
+                return EXPR_TYPE_OBJREF_PATH;
+
+            if (this.#computedKeys.includes(expression))
+                return EXPR_TYPE_COMPUTED;
+
+            return EXPR_TYPE_OBJREF;
+        }
+
+      
+       return "INVALID";
+
+    }
     
     #hasAnyChar(str, chars) {
         return chars.some(char => str.includes(char));
     }
    
+    #getClosestBareaObject(element)
+    {
+        if (element.hasOwnProperty("_bareaObject"))
+            return element._bareaObject;
+
+        let val=null;
+        let p = element.parentElement;
+        let safecnt=0;
+        while (!val && p)
+        {
+            safecnt++;
+            if (p.hasOwnProperty("_bareaObject"))
+                val = p._bareaObject;
+
+            p=p.parentElement;
+
+            if (safecnt>10)
+                break;
+        }
+
+        return val || null;
+    }
+
     #getClosestAttribute(element, name)
     {
         let val = element.getAttribute(name);
@@ -1455,16 +1342,6 @@ class BareaApp
         return val || "";
     }
 
-    #isValidHandlerName(handlername)
-    {
-        if (!handlername)
-            return false;
-
-        if (handlername.includes('(') && handlername.includes(')'))
-            return true;
-
-        return false;
-    }
    
     //Get interpolation data paths from a string found in the dom
     #getInterpolationPaths(str) {

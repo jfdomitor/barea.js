@@ -199,7 +199,7 @@
                                 <br />
                                 <br />
                                 <button class="beautiful-btn" ba-click="tryIfHandler()">Try ba-if</button>
-                                <p ba-if="canShowText()">Add / Remove this text by a computed function</p>
+                                <p ba-if="canShowText">Add / Remove this text by a computed function</p>
                             </div>
                          </li>
                         <li>Directive: ba-src
@@ -216,14 +216,14 @@
                                  </i>
                             </div>
                         </li>
-                        <li>Interpolation, example: {{root.model.users[5].firstname}}</li>
+                        <li>Interpolation, example: {{root.model.firstname}}</li>
                         <li>Check out the source of this page, all features are used on it.</li>
                     </ul>
                 </div> 
             </div>
 
             <div class="box2">
-                    <h1>{{root.model.description}}, count: {{root.model.shows.count}}</h1>
+                    <h1>{{root.model.description}}, count: </h1>
                     <button class="beautiful-btn" ba-click="editHandler('Editing...')" ba-path="root.model">Edit Notes</button>
                     <button class="beautiful-btn" ba-click="showMoreRamones('Hey ho lets go')">Show a lot more shows</button>
                     <br />
@@ -240,7 +240,7 @@
                         </thead>
                         <tbody>
                             <tr ba-foreach="show in root.model.shows">
-                                <td>{{Index}}</td>
+                                <td>{{index}}</td>
                                 <td>{{show.Date}}</td>
                                 <td>
                                     <span ba-hide="root.edit">{{show.Note}}</span>
@@ -275,8 +275,8 @@
         const bareaapp = getBareaApp();
 
         //Some logs are available if needed
-        bareaapp.printConsoleLogs();
-        //bareaapp.enableConsoleLog(1, true);
+        //bareaapp.printConsoleLogs();
+        bareaapp.enableConsoleLog(1, true);
         //bareaapp.enableConsoleLog(2, true);
         //bareaapp.enableConsoleLog(3, true);
         //bareaapp.enableConsoleLog(4, true);
