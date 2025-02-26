@@ -522,10 +522,20 @@ class BareaApp
                 {
                     if (!attr.value)
                         return;
-                    if (this.#getExpressionType(attr.value, DIR_BIND)==='INVALID')
+
+                    let exprtype = this.#getExpressionType(attr.value, DIR_BIND);
+                    if (exprtype==='INVALID')
                     {
                         console.error(`Then ${DIR_BIND} directive has an invalid (${attr.value}).`);
                         return;
+                    }
+
+                    if (exprtype==EXPR_TYPE_PATH && !el.hasOwnProperty('_bareaObject'))
+                    {
+                          let objpath = this.#getSecondLastKeyFromPath(exprtype);
+                          el._bareaObject=this.getProxifiedPathData(objpath);
+                          el._bareaKey=this.#getLastKeyFromPath(item.path);
+
                     }
 
                     const odo = this.#createDomDictionaryObject(el,el.parentElement,null,attr.name,attr.value, DIR_TYPE_BINDING, true,"","",templateId,null);
@@ -601,13 +611,9 @@ class BareaApp
     #setupBindings(path='root') 
     {
 
-        let workscope = [];
-        if (path.toLowerCase()=='root')
-            workscope = this.#domDictionary.filter(p=> p.isnew && [DIR_TYPE_BINDING, DIR_TYPE_HANDLER].includes(p.directivetype));
-        else
-            workscope= this.#domDictionary.filter(p=> p.isnew && ((p.path.includes(path) && p.directivetype===DIR_TYPE_BINDING) || p.directivetype===DIR_TYPE_HANDLER));
 
-    
+      let workscope = this.#domDictionary.filter(p=> p.isnew && [DIR_TYPE_BINDING, DIR_TYPE_HANDLER].includes(p.directivetype));
+     
         workscope.forEach(item => 
         {
 
@@ -616,25 +622,12 @@ class BareaApp
                 item.isnew = false;
                 item.element.addEventListener("input", (event) => {
 
-                    const path = item.path;
-                    if (!path)
-                        return;
 
                     let attribFuncDef = item.element.getAttribute(DIR_BIND_HANDLER);
                     if (attribFuncDef)
                     {
-                        if (!(item.element._bareaObject && item.element._bareaKey))
-                        {
-                              //User created element
-                            let objpath = this.#getSecondLastKeyFromPath(item.path);
-                            item.element._bareaObject=this.getProxifiedPathData(objpath);
-                            item.element._bareaKey=this.#getLastKeyFromPath(item.path);
-                        }
-                        else
-                        {
-                             //Template created element
-                        }
-
+                        if (!item.element.hasOwnProperty('_bareaObject'))
+                            return;
 
                         attribFuncDef=attribFuncDef.trim();
                         let pieces = this.#parseFunctionCall(attribFuncDef);
@@ -759,7 +752,7 @@ class BareaApp
             }
             else
             {
-                foreacharray = this.getPathData(datapath); 
+                foreacharray = this.getProxifiedPathData(datapath); 
             }
             
             if (!Array.isArray(foreacharray))
@@ -845,6 +838,20 @@ class BareaApp
                     }
                    
                     
+                });
+
+                let templatechildren = newtag.querySelectorAll("*"); 
+                templatechildren.forEach(child => 
+                {
+                    if (child.id)
+                        child.id = child.id + `-${counter}` 
+                    else
+                        child.id = `${varname}-${counter}`; 
+
+                    let forattrib = child.getAttribute("for");
+                    if (forattrib)
+                        child.setAttribute("for", forattrib + `-${counter}`); 
+                   
                 });
 
                 this.#buildDomDictionary(newtag, template.id);
