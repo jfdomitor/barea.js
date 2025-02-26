@@ -576,11 +576,22 @@ class BareaApp
                     let attribFuncDef = item.element.getAttribute(DIR_BIND_HANDLER);
                     if (attribFuncDef)
                     {
-                        let ba_path = item.element.getAttribute(META_PATH);
-                        const dataatpath = this.getProxifiedPathData(ba_path);
+                        if (!(item.element._bareaObject && item.element._bareaKey))
+                        {
+                              //User created element
+                            let objpath = this.#getLastObjectKeyFromPath(item.path);
+                            item.element._bareaObject=this.getProxifiedPathData(objpath);
+                            item.element._bareaKey=this.#getLastKeyFromPath(item.path);
+                        }
+                        else
+                        {
+                             //Template created element
+                        }
+
+
                         attribFuncDef=attribFuncDef.trim();
                         let pieces = this.#parseFunctionCall(attribFuncDef);
-                        let allparams =  [VERB_SET_DATA, item.element, dataatpath];
+                        let allparams =  [VERB_SET_DATA, item.element, item.element._bareaObject];
                         allparams.push(...pieces.params);
 
                         if (this.#methods[pieces.functionName]) {
@@ -596,7 +607,10 @@ class BareaApp
                     {
                         if (log.active)
                             console.log(log.name, "type: " + item.element.type, "key: " + valuekey, "input value: " + item.element.checked);
-                        this.setPathData(this.#appDataProxy, path, item.element.checked);
+
+
+                        //this.setPathData(this.#appDataProxy, path, item.element.checked);
+                        item.element._bareaObject[item.element._bareaKey] =  item.element.checked;
                     } 
                     else if (item.element.type === "radio") 
                     {
@@ -604,14 +618,16 @@ class BareaApp
                             console.log(log.name, "type: " + item.element.type, "key: " + valuekey, "input value: " + item.element.value);
 
                         if (item.element.checked)
-                            this.setPathData(this.#appDataProxy, path, item.element.value);
+                            item.element._bareaObject[item.element._bareaKey] =  item.element.value;
+                            //this.setPathData(this.#appDataProxy, path, item.element.value);
                     } 
                     else 
                     {
                         if (log.active)
                             console.log(log.name, "type: " + item.element.type, "key: " + valuekey, "input value: " + item.element.value);
 
-                        this.setPathData(this.#appDataProxy, path, item.element.value);
+                        item.element._bareaObject[item.element._bareaKey] =  item.element.value;
+                        //this.setPathData(this.#appDataProxy, path, item.element.value);
                     }
                 });
 
@@ -629,9 +645,19 @@ class BareaApp
                 attribFuncDef=attribFuncDef.trim();
                 item.element.addEventListener("click", (event) => {
   
-                    const path = this.#getClosestAttribute(event.target, META_PATH); 
-                    let data = this.getProxifiedPathData(path);
-                    let allparams = [event,item.element, data];
+                    if (!(item.element._bareaObject && item.element._bareaKey))
+                    {
+                        //User created element
+                        let objpath = this.#getLastObjectKeyFromPath(item.path);
+                        item.element._bareaObject=this.getProxifiedPathData(objpath);
+                        item.element._bareaKey=this.#getLastKeyFromPath(item.path);
+                    }
+                    else
+                    {
+                             //Template created element
+                    }
+
+                    let allparams = [event,item.element, item.element._bareaObject];
                     let pieces = this.#parseFunctionCall(attribFuncDef);
                     allparams.push(...pieces.params);
 
@@ -649,7 +675,173 @@ class BareaApp
     
     }
 
+    #renderTemplates(operation='init', path='root') 
+    {
+
+        let foreacharray = [];
   
+        //throw new Error('renderTemplates was called with an object in the array');
+        //Also occurs on ba-bind to an object in the array
+        if (path.includes('['))
+            return; 
+
+        let isSinglePush = operation === "push";
+        let templates = [];
+        if (path.toLowerCase()==='root')
+            templates = this.#domDictionary.filter(p=> p.directivetype===DIR_TYPE_TEMPLATE);
+        else
+            templates = this.#domDictionary.filter(p=> p.path.includes(path) && p.directivetype===DIR_TYPE_TEMPLATE);
+
+        templates.forEach(template => {
+
+            let [varname, datapath] = template.path.split(" in ").map(s => s.trim());
+            if (!varname)
+                throw new Error(`No variable name was found in the ${DIR_FOREACH} expression`);
+
+            if (this.#isValidHandlerName(datapath))
+            {
+                let pieces = this.#parseFunctionCall(datapath);
+                if (pieces.functionName)
+                {
+                    foreacharray = this.#computedProperties[pieces.functionName].value;
+                }
+                else
+                {
+                    console.warn(`Could not find computed function name in the ${DIR_FOREACH} directive`);
+                }
+            }
+            else
+            {
+                foreacharray = this.getPathData(datapath); 
+            }
+            
+            if (!Array.isArray(foreacharray))
+                return; //throw new Error('renderTemplates could not get array, ' + path);
+
+           if ((foreacharray.length - template.element.children.length) !== 1)
+                isSinglePush=false;
+
+           let counter=0;
+            if (!isSinglePush)
+            {
+                this.#removeTemplateChildrenFromDomDictionary(template.id);
+                template.parentelement.innerHTML = ""; // Clear list
+            }
+            else
+            {
+                counter = foreacharray.length-1;
+                foreacharray = foreacharray.slice(-1);
+            }
+
+            const fragment = document.createDocumentFragment();
+
+            foreacharray.forEach(item => {
+                const newtag = document.createElement(template.templateTagName);
+                //let interpolationpaths = this.#getInterpolationPaths(template.templateMarkup);
+                // if (interpolationpaths.length>0)
+                // {
+                //     let regex = new RegExp(`{{([^}]*)\\b${varname}\\b([^}]*)}}`, "g");
+                //     newtag.innerHTML = template.templateMarkup.replace(regex, (match, before, after) => {return `{{${before}${datapath}[${counter}]${after}}}`});
+                // }
+                // else
+                // {
+                //     newtag.innerHTML = template.templateMarkup;
+                // }
+              
+                newtag.innerHTML = template.templateMarkup;
+                newtag._bareaData = item;
+                if (newtag.id)
+                    newtag.id = newtag.id + `-${counter}` 
+                else
+                    newtag.id = `${template.id}-${varname}-${counter}`; 
+
+                fragment.appendChild(newtag);
+               
+                //Add references to click handlers
+                newtag.querySelectorAll(`[${DIR_CLICK}]`).forEach(el => 
+                {
+                    el._bareaData = item;
+                    // el.setAttribute(META_ARRAY_VARNAME, varname);
+                    // el.setAttribute(META_PATH, `${datapath}[${counter}]`);
+                    // el.setAttribute(META_ARRAY_INDEX, counter);
+                });
+
+                newtag.querySelectorAll(`[${DIR_IF}], [${DIR_HIDE}], [${DIR_SHOW}], [${DIR_CLASS_IF}], [${DIR_CLICK}], [${DIR_BIND}]`).forEach(el => 
+                {
+                    el._bareaObject = item;
+                    if (el.hasAttribute(DIR_IF)) {
+                        let attrib = el.getAttribute(DIR_IF);
+                        if (!this.#isValidHandlerName(attrib))
+                        {
+                            if (!attrib.includes(varname + '.'))
+                                console.warn(`The ${DIR_IF} expression ${attrib} used in an element under ${DIR_FOREACH} does not match the ${DIR_FOREACH} expression, should reference '${varname}'.`);
+                        }
+                    }
+                    if (el.hasAttribute(DIR_CLASS_IF)) {
+                        let attrib = el.getAttribute(DIR_CLASS_IF);
+                        if (!this.#isValidHandlerName(attrib))
+                        {
+                            if (!attrib.includes(varname + '.'))
+                                console.warn(`The ${DIR_CLASS_IF} expression ${attrib} used in an element under ${DIR_FOREACH} does not match the ${DIR_FOREACH} expression, should reference '${varname}'.`);
+                        }
+                    }
+                    if (el.hasAttribute(DIR_HIDE)) {
+                        let attrib = el.getAttribute(DIR_HIDE);
+                        if (!this.#isValidHandlerName(attrib))
+                        {
+                            if (!attrib.includes(varname + '.'))
+                                console.warn(`The ${DIR_HIDE} expression ${attrib} used in an element under ${DIR_FOREACH} does not match the ${DIR_FOREACH} expression, should reference '${varname}'.`);
+                        }
+                    }
+                    if (el.hasAttribute(DIR_SHOW)) {
+                        let attrib = el.getAttribute(DIR_SHOW);
+                        if (!this.#isValidHandlerName(attrib))
+                        {
+                            if (!attrib.includes(varname + '.'))
+                                console.warn(`The ${DIR_SHOW} expression ${attrib} used in an element under ${DIR_FOREACH} does not match the ${DIR_FOREACH} expression, should reference '${varname}'.`);
+                        }
+                    }
+                    if (el.hasAttribute(DIR_BIND)) {
+                        let attrib = el.getAttribute(DIR_BIND);
+                        if (!attrib.includes(varname + '.'))
+                            console.warn(`The ${DIR_SHOW} expression ${attrib} used in an element under ${DIR_FOREACH} does not match the ${DIR_FOREACH} expression, should reference '${varname}'.`);
+                    
+                        el._bareaKey=this.#getLastKeyFromPath(attrib);
+                    }
+                   
+                    
+                });
+
+                
+                // let templatechildren = newtag.querySelectorAll("*"); 
+                // templatechildren.forEach(child => 
+                // {
+                //     if (child.id)
+                //         child.id = child.id + `-${counter}` 
+                //     else
+                //         child.id = `${varname}-${counter}`; 
+
+                //     let forattrib = child.getAttribute("for");
+                //     if (forattrib)
+                //         child.setAttribute("for", forattrib + `-${counter}`); 
+                   
+
+                // });
+    
+
+                this.#buildDomDictionary(newtag, template.id);
+
+                counter++;
+
+            });
+
+            if (fragment.childElementCount>0)
+                template.parentelement.appendChild(fragment);
+           
+        });    
+    }
+
+  /*
     #renderTemplates(operation='init', path='root', array=this.#appDataProxy) 
     {
 
@@ -862,7 +1054,7 @@ class BareaApp
            
         });    
     }
-
+*/
     #applyProxyChangesToDOM(path='root', value=this.#appDataProxy) 
     {
       
@@ -885,35 +1077,37 @@ class BareaApp
                             return;
                     }
 
-                    let exprvalue = null;
+                   
 
-                    if (expr.toLowerCase()=== INTERPOL_INDEX)
-                        exprvalue = instance.#getClosestAttribute(t.element, META_ARRAY_INDEX);
-                    if (expr.endsWith('.'+INTERPOL_ARRCOUNT))
-                    {
-                        let arrpath = "";
-                        let parts = expr.split('.');
-                        parts.forEach(p=>
-                        {
-                            if (p===INTERPOL_ARRCOUNT)
-                                return;
+                    // if (expr.toLowerCase()=== INTERPOL_INDEX)
+                    //     exprvalue = instance.#getClosestAttribute(t.element, META_ARRAY_INDEX);
+                    // if (expr.endsWith('.'+INTERPOL_ARRCOUNT))
+                    // {
+                    //     let arrpath = "";
+                    //     let parts = expr.split('.');
+                    //     parts.forEach(p=>
+                    //     {
+                    //         if (p===INTERPOL_ARRCOUNT)
+                    //             return;
 
-                            if (arrpath==='')
-                                arrpath+=p;
-                            else
-                                arrpath+='.'+p;
+                    //         if (arrpath==='')
+                    //             arrpath+=p;
+                    //         else
+                    //             arrpath+='.'+p;
                             
-                        });
-                        if (arrpath)
-                        {
-                            exprvalue = instance.getPathData(arrpath);
-                            if (Array.isArray(exprvalue))
-                                exprvalue=exprvalue.length;
-                        }
+                    //     });
+                    //     if (arrpath)
+                    //     {
+                    //         exprvalue = instance.getPathData(arrpath);
+                    //         if (Array.isArray(exprvalue))
+                    //             exprvalue=exprvalue.length;
+                    //     }
                         
-                    }
-                    else
-                        exprvalue = instance.getPathData(expr);
+                    // }
+                    // else
+                    
+                    let exprvalue = null;
+                    exprvalue = instance.getPathData(expr);
 
                     if (!exprvalue)
                         exprvalue ="";
@@ -1173,6 +1367,33 @@ class BareaApp
     }
 
     /*** Internal Helpers ***/
+    #getLastKeyFromPath(path)
+    {
+        if (!path)
+            return 'root';
+
+        let keys = path.split('.');
+
+        if (keys.length<2)
+            return 'root';
+       
+        let key = "";
+        keys.forEach(t=>{key=t});
+        return key;
+    }
+
+    #getLastObjectKeyFromPath(path)
+    {
+        if (!path)
+            return 'root';
+
+        let keys = path.split('.');
+        if (keys.length>=2)
+            return keys[keys.length-2];
+
+        return 'root';
+    }
+
     #parseFunctionCall(str) {
 
          // Convert string values to correct types
@@ -1208,7 +1429,11 @@ class BareaApp
         return { functionName, params };
     }
     
-   
+    // #getExpressionType(expression) 
+    // {
+    //    if (expression.toLowerCase().includes('root'))
+
+    // }
     
     #hasAnyChar(str, chars) {
         return chars.some(char => str.includes(char));
