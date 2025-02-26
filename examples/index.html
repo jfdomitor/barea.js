@@ -224,6 +224,9 @@
 
             <div class="box2">
                     <h1>{{root.model.description}}, count: </h1>
+                    <input type="text" ba-bind="root.model.description"  />
+                    <br />
+                    <br />
                     <button class="beautiful-btn" ba-click="editHandler('Editing...')" ba-path="root.model">Edit Notes</button>
                     <button class="beautiful-btn" ba-click="showMoreRamones('Hey ho lets go')">Show a lot more shows</button>
                     <br />
@@ -239,7 +242,7 @@
                             </tr>
                         </thead>
                         <tbody>
-                            <tr ba-foreach="show in root.model.shows">
+                            <tr ba-foreach="show in sortedShows">
                                 <td>{{index}}</td>
                                 <td>{{show.Date}}</td>
                                 <td>
@@ -272,7 +275,7 @@
 
         //Create the barea.js app 
         //Available paramteter: enableInternalId = let barea assign a unique id (baId) to each object
-        const bareaapp = getBareaApp();
+        const bareaapp = getBareaApp(false);
 
         //Some logs are available if needed
         //bareaapp.printConsoleLogs();
@@ -291,7 +294,7 @@
             data: {
                 edit:false, showText:true, linkToNPM:"https://www.npmjs.com", createdByFirstName:"Johan", createdByLastName:"Filipsson", 
                 description: "barea.js (Basic Reactivity) is a small reactive java script, it can be use to list Ramones shows and hopefully other things :)",
-                model: { description: "List of Ramones shows", shows:[], image:"../examples/stone.png"}, settings:{ myDivClasses: "infobox" }
+                model: { description: "List of Ramones shows", shows:[{Date:"1978-01-01", Note:"Test"}], image:"../examples/stone.png"}, settings:{ myDivClasses: "infobox" }
             },
             methods:{
 
@@ -332,6 +335,7 @@
 
                 sortedShows:function()
                 {
+
                     return this.getData().model.shows.slice(0,20);
                     // return this.getData().model.shows.sort((a, b) => {
                     //         let modifier = 1;

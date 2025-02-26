@@ -50,13 +50,15 @@ const INTERPOL_INDEX = 'index';
 
 
 //Expression types
-const EXPR_TYPE_PATH = 'path';
+const EXPR_TYPE_ROOT_PATH = 'path';
 const EXPR_TYPE_HANDLER = 'handler';
 const EXPR_TYPE_COMPUTED = 'computed';
 const EXPR_TYPE_OBJREF = 'objref';
 const EXPR_TYPE_OBJREF_PATH = 'objpath';
 const EXPR_TYPE_OBJREF_EXPR = 'objexpr';
 const EXPR_TYPE_EXPR = 'expr';
+
+const ROOT_OBJECT = 'root';
 
 
 class BareaApp 
@@ -169,7 +171,7 @@ class BareaApp
             return;
         }
           
-        const proxy = this.#createReactiveProxy((path, value, key) => 
+        const proxy = this.#createReactiveProxy((path, value, key, keyobject) => 
         { 
             //Handles changes in the data and updates the dom
 
@@ -179,16 +181,15 @@ class BareaApp
 
             this.#renderTemplates(key, path, value);
             this.#setupBindings(path);
-            this.#applyProxyChangesToDOM(path, value);
+            this.#applyProxyChangeInterpolation(path, value);
+            this.#applyProxyChangeToDOM(path, value, key, keyobject);
 
         }, this.#appData);
 
         this.#appDataProxy = proxy;
   
-        this.#buildDomDictionary();
-        this.#renderTemplates();
-        this.#setupBindings();
-        this.#applyProxyChangesToDOM();
+      
+      
 
         if (this.#enableBareaId && ! this.#appDataProxy.hasOwnProperty('baId')) 
             this.#appDataProxy.baId = ++this.#bareaId;  // Assign a new unique ID
@@ -196,6 +197,13 @@ class BareaApp
         if (this.#mountedHandler)   
             this.#mountedHandler.apply(this, [this.#appDataProxy]);
    
+
+        this.#buildDomDictionary();
+        this.#renderTemplates();
+        this.#setupBindings();
+        this.#applyProxyChangeInterpolation();
+        this.#applyProxyChangeToDOM();
+        
         return this.#appDataProxy;
     }
 
@@ -335,7 +343,7 @@ class BareaApp
                         {
                             return (...args) => {
                                 const result = Array.prototype[value.name].apply(target, args);
-                                callback(currentpath, target, key); // Trigger DOM update on array changes
+                                callback(currentpath, target, key, target); // Trigger DOM update on array changes
                                 return result;
                             };
                         }    
@@ -359,7 +367,7 @@ class BareaApp
                     dependencyTracker.notify(target,key);
 
                 const path = Array.isArray(target) ? `${currentpath}[${key}]` : `${currentpath}.${key}`;
-                callback(path, value, key);
+                callback(path, value, key, target);
                 return true;
             }
         };
@@ -504,7 +512,9 @@ class BareaApp
                 {
                     if (!attr.value)
                         return;
-                    if (this.#getExpressionType(attr.value, attr.name)==='INVALID')
+
+                    let exprtype =this.#getExpressionType(attr.value, attr.name);
+                    if (exprtype==='INVALID')
                     {
                         console.error(`Then ${attr.name} directive has an invalid value (${attr.value}).`);
                         return;
@@ -512,6 +522,13 @@ class BareaApp
 
                     if (attr.name===DIR_IMAGE_SRC && el.localName.toLowerCase()!=="img")
                         return;
+
+                    if (exprtype==EXPR_TYPE_ROOT_PATH && !el.hasOwnProperty('_bareaObject'))
+                    {
+                        let objpath = this.#getLastObjectName(attr.value);
+                        el._bareaObject=this.getProxifiedPathData(objpath);
+                        el._bareaKey=this.#getLastKeyName(attr.value);
+                     }
 
                     const odo = this.#createDomDictionaryObject(el,el.parentElement,null,attr.name,attr.value, DIR_TYPE_UI_SETTER, true,"","",templateId,null);
                     this.#domDictionary.push(odo);
@@ -530,11 +547,11 @@ class BareaApp
                         return;
                     }
 
-                    if (exprtype==EXPR_TYPE_PATH && !el.hasOwnProperty('_bareaObject'))
+                    if (exprtype==EXPR_TYPE_ROOT_PATH && !el.hasOwnProperty('_bareaObject'))
                     {
-                          let objpath = this.#getLastObjectPath(exprtype);
+                          let objpath = this.#getLastObjectName(attr.value);
                           el._bareaObject=this.getProxifiedPathData(objpath);
-                          el._bareaKey=this.#getLastKeyFromPath(item.path);
+                          el._bareaKey=this.#getLastKeyName(attr.value);
 
                     }
 
@@ -688,9 +705,9 @@ class BareaApp
                     if (!(item.element._bareaObject && item.element._bareaKey))
                     {
                         //User created element
-                        let objpath = this.#getLastObjectPath(item.path);
+                        let objpath = this.#getLastObjectName(item.path);
                         item.element._bareaObject=this.getProxifiedPathData(objpath);
-                        item.element._bareaKey=this.#getLastKeyFromPath(item.path);
+                        item.element._bareaKey=this.#getLastKeyName(item.path);
                     }
                     else
                     {
@@ -740,10 +757,9 @@ class BareaApp
 
             if (this.#getExpressionType(datapath, DIR_FOREACH)===EXPR_TYPE_COMPUTED)
             {
-                let pieces = this.#parseFunctionCall(datapath);
-                if (pieces.functionName)
+                if (datapath)
                 {
-                    foreacharray = this.#computedProperties[pieces.functionName].value;
+                    foreacharray = this.#computedProperties[datapath].value;
                 }
                 else
                 {
@@ -780,7 +796,6 @@ class BareaApp
               
                 newtag.innerHTML = template.templateMarkup;
                 newtag.setAttribute(META_ARRAY_VARNAME, varname);
-                //newtag.setAttribute(META_PATH, `${datapath}[${counter}]`);
                 newtag.setAttribute(META_ARRAY_INDEX, counter);
                 newtag._bareaObject = item;
                 if (newtag.id)
@@ -794,47 +809,15 @@ class BareaApp
                 {
                     el._bareaObject = item;
                     el.setAttribute(META_ARRAY_VARNAME, varname);
-                    // el.setAttribute(META_PATH, `${datapath}[${counter}]`);
                     el.setAttribute(META_ARRAY_INDEX, counter);
 
-                    if (el.hasAttribute(DIR_IF)) {
-                        // let attrib = el.getAttribute(DIR_IF);
-                        // if (!this.#isValidHandlerName(attrib))
-                        // {
-                        //     if (!attrib.includes(varname + '.'))
-                        //         console.warn(`The ${DIR_IF} expression ${attrib} used in an element under ${DIR_FOREACH} does not match the ${DIR_FOREACH} expression, should reference '${varname}'.`);
-                        // }
-                    }
-                    if (el.hasAttribute(DIR_CLASS_IF)) {
-                        // let attrib = el.getAttribute(DIR_CLASS_IF);
-                        // if (!this.#isValidHandlerName(attrib))
-                        // {
-                        //     if (!attrib.includes(varname + '.'))
-                        //         console.warn(`The ${DIR_CLASS_IF} expression ${attrib} used in an element under ${DIR_FOREACH} does not match the ${DIR_FOREACH} expression, should reference '${varname}'.`);
-                        // }
-                    }
-                    if (el.hasAttribute(DIR_HIDE)) {
-                        // let attrib = el.getAttribute(DIR_HIDE);
-                        // if (!this.#isValidHandlerName(attrib))
-                        // {
-                        //     if (!attrib.includes(varname + '.'))
-                        //         console.warn(`The ${DIR_HIDE} expression ${attrib} used in an element under ${DIR_FOREACH} does not match the ${DIR_FOREACH} expression, should reference '${varname}'.`);
-                        // }
-                    }
-                    if (el.hasAttribute(DIR_SHOW)) {
-                        // let attrib = el.getAttribute(DIR_SHOW);
-                        // if (!this.#isValidHandlerName(attrib))
-                        // {
-                        //     if (!attrib.includes(varname + '.'))
-                        //         console.warn(`The ${DIR_SHOW} expression ${attrib} used in an element under ${DIR_FOREACH} does not match the ${DIR_FOREACH} expression, should reference '${varname}'.`);
-                        // }
-                    }
+                 
                     if (el.hasAttribute(DIR_BIND)) {
                         let attrib = el.getAttribute(DIR_BIND);
                         if (!attrib.includes(varname + '.'))
                             console.warn(`The ${DIR_BIND} expression ${attrib} used in an element under ${DIR_FOREACH} does not match the ${DIR_FOREACH} expression, should reference '${varname}'.`);
                     
-                        el._bareaKey=this.#getLastKeyFromPath(attrib);
+                        el._bareaKey=this.#getLastKeyName(attrib);
                     }
                    
                     
@@ -866,308 +849,401 @@ class BareaApp
         });    
     }
 
-  
-    #applyProxyChangesToDOM(path='root', value=this.#appDataProxy) 
+    #applyProxyChangeInterpolation(path='root', changedvalue)
     {
-    
-        //console.log(path, value);
-        function interpolate(instance)
+        const interpolations = this.#domDictionary.filter(p=>p.directive===DIR_INTERPOLATION);
+        interpolations.forEach(t=>
         {
-            const interpolations = instance.#domDictionary.filter(p=>p.directive===DIR_INTERPOLATION);
-            interpolations.forEach(t=>
+            let count=0;
+            let content= t.templateMarkup;
+            t.expressions.forEach(expr=> 
             {
-                let count=0;
-                let content= t.templateMarkup;
-                t.expressions.forEach(expr=> 
+                //Just to speed up
+                //If primitive (path), example : root.model.user.firstname
+                //Only interpolate root, root.model, root.model.user, root.model.user.firstname
+                if (changedvalue)
                 {
-                    //Just to speed up
-                    //If primitive (path), example : root.model.user.firstname
-                    //Only interpolate root, root.model, root.model.user, root.model.user.firstname
-                    if (instance.#isPrimitive(value) && expr.includes('root'))
+                    if (this.#isPrimitive(changedvalue) && expr.includes('root'))
                     {
                         if (!path.includes(expr))
                             return;
                     }
+                }
 
-                    let exprvalue = null;
-                    let exprtype = instance.#getExpressionType(expr, DIR_INTERPOLATION);
-                    if (exprtype===EXPR_TYPE_COMPUTED){
-                        exprvalue=instance.#computedProperties[expr].value;
-                    }else if (exprtype===EXPR_TYPE_PATH){
-                        exprvalue = instance.getPathData(expr);
-                    }else if (exprtype===EXPR_TYPE_OBJREF){
-                        exprvalue = instance.#getClosestBareaObject(t.element);
-                    }
-                    else if (exprtype===EXPR_TYPE_OBJREF_PATH){
-                        let subobj = instance.#getClosestBareaObject(t.element);
-                        let key =  instance.#getLastKeyFromPath(expr);
-                        exprvalue = subobj[key];
-                    }
-                    else if (expr === INTERPOL_INDEX)
-                    {
-                        exprvalue = instance.#getClosestAttribute(t.element, META_ARRAY_INDEX);
-                    }
-
-                    if (!exprvalue)
-                        exprvalue ="";
-
-                    if (typeof exprvalue === "object") 
-                        exprvalue = JSON.stringify(exprvalue)
-                  
-                    count++;
-                    const regex = new RegExp(`{{\\s*${expr.replace(/[.[\]]/g, '\\$&')}\\s*}}`, 'g');
-                    content = content.replace(regex, exprvalue);        
-                    
-                });
-                if (count>0)
-                    t.node.textContent = content;
-
-            });
-
-        }
-
-       
-        function updateElements(path, value, instance)
-        {
-                //Computed handlers get cashed value (updates when used by other, become dirty)
-                const computedfuncs = instance.#domDictionary.filter(p=> p.directivetype === DIR_TYPE_COMPUTED);
-                computedfuncs.forEach(t=>
+                let exprvalue = null;
+                let exprtype = this.#getExpressionType(expr, DIR_INTERPOLATION);
+                if (exprtype===EXPR_TYPE_COMPUTED){
+                    exprvalue=this.#computedProperties[expr].value;
+                }else if (exprtype===EXPR_TYPE_ROOT_PATH){
+                    exprvalue = this.getPathData(expr);
+                }else if (exprtype===EXPR_TYPE_OBJREF){
+                    exprvalue = this.#getClosestBareaObject(t.element);
+                }
+                else if (exprtype===EXPR_TYPE_OBJREF_PATH){
+                    let subobj = this.#getClosestBareaObject(t.element);
+                    let key =  this.#getLastKeyName(expr);
+                    exprvalue = subobj[key];
+                }
+                else if (expr === INTERPOL_INDEX)
                 {
-                  
-                    let attribFuncDef = t.expressions[0];
-                    let boundvalue = false;
-                    attribFuncDef=attribFuncDef.trim();
-                    if (instance.#computedProperties[attribFuncDef]) {
-                            boundvalue = instance.#computedProperties[attribFuncDef].value;
-                    } else {
-                        console.warn(`Computed boolean handler '${pattribFuncDef}' not found.`);
-                    }
-                    
-                    if (t.directive===DIR_HIDE)
-                        t.element.style.display = boundvalue ? "none" : ""
-                    else if (t.directive===DIR_SHOW)      
-                        t.element.style.display = boundvalue ? "" : "none";
-                    else if (t.directive===DIR_IF) 
-                    {
-                        if (boundvalue)
-                        {
-                            if (!t.element.parentNode)
-                                if (t.elementnextsibling)
-                                    t.parentelement.insertBefore(t.element, t.elementnextsibling);
-                        }else
-                        {
-                            if (t.element.parentNode)
-                            {
-                                t.elementnextsibling = t.element.nextSibling;
-                                t.element.remove();
-                            }   
-                        }
-                    }
-                    else if (t.directive===DIR_CLASS_IF && t.expressions.length>1) 
-                    {
-                       let classnames = t.expressions[1].split(/[\s,]+/);
+                    exprvalue = this.#getClosestAttribute(t.element, META_ARRAY_INDEX);
+                }
 
-                        // Add classes if condition is true and remove if false
-                        if (boundvalue) {
-                            classnames.forEach(className => {
-                                if (!t.element.classList.contains(className)) {
-                                    t.element.classList.add(className); // Add class if not already present
-                                }
-                            });
-                        } else {
-                            classnames.forEach(className => {
-                                if (t.element.classList.contains(className)) {
-                                    t.element.classList.remove(className); // Remove class if present
-                                }
-                            });
-                        }
-                    }    
-                          
-                });
+                if (!exprvalue)
+                    exprvalue ="";
 
-                //Boolean expressions (react on any data change)
-                const boolexpr = instance.#domDictionary.filter(p=> p.directivetype === DIR_TYPE_BOOLEXPR);
-                boolexpr.forEach(t=>
-                {
-                    if (!t.expressions)
-                        return;
-
-                       
-                    let funcname = "";
-                    if (t.expressions.length>2)
-                        funcname=t.expressions[2]
-                    else
-                        funcname=t.expressions[1];
-
-                    if (!funcname)
-                    {
-                        console.error('Could not find function name for computed boolean expression fucntion');
-                        return;
-                    }
-                    let boundvalue = false;
-                    if (instance.#computedProperties[funcname]) {
-                        boundvalue = instance.#computedProperties[funcname].value;
-                    } else {
-                        console.warn(`Computed boolean expression fucntion '${pieces.functionName}' not found.`);
-                    }    
-                     
-                    
-                    if (t.directive===DIR_HIDE)
-                        t.element.style.display = boundvalue ? "none" : ""
-                    else if (t.directive===DIR_SHOW)      
-                        t.element.style.display = boundvalue ? "" : "none";
-                    else if (t.directive===DIR_IF) 
-                    {
-                          if (boundvalue)
-                          {
-                              if (!t.element.parentNode)
-                                  if (t.elementnextsibling)
-                                      t.parentelement.insertBefore(t.element, t.elementnextsibling);
-                          }else
-                          {
-                              if (t.element.parentNode)
-                              {
-                                  t.elementnextsibling = t.element.nextSibling;
-                                  t.element.remove();
-                              }   
-                          }
-                    } 
-                    else if (t.directive===DIR_CLASS_IF && t.expressions.length>1) 
-                    {
-                       let classnames = t.expressions[1].split(/[\s,]+/);
-
-                        // Add classes if condition is true and remove if false
-                        if (boundvalue) {
-                            classnames.forEach(className => {
-                                if (!t.element.classList.contains(className)) {
-                                    t.element.classList.add(className); // Add class if not already present
-                                }
-                            });
-                        } else {
-                            classnames.forEach(className => {
-                                if (t.element.classList.contains(className)) {
-                                    t.element.classList.remove(className); // Remove class if present
-                                }
-                            });
-                        }
-                    }     
-                            
-                });
-
-                const bareabind = instance.#domDictionary.filter(p=>p.directive===DIR_BIND && instance.#isPrimitive(value));
-                bareabind.forEach(t=>
-                {
-
-                    let obj_path = instance.#getLastObjectPath(path);
-                    let changed_object = instance.getProxifiedPathData(obj_path);
-                    if (!changed_object)
-                        return;
-
-                    if (!t.element._bareaObject===changed_object)
-                        return;
-
-                  
-                    let attribFuncDef = t.element.getAttribute(DIR_BIND_HANDLER);
-                    if (attribFuncDef)
-                    {
-                        attribFuncDef=attribFuncDef.trim();
-                        if (instance.#getExpressionType(attribFuncDef, DIR_BIND_HANDLER)==="INVALID")
-                            return;
-                     
-                        let pieces = instance.#parseFunctionCall(attribFuncDef);
-                        let allparams = [VERB_SET_UI, t.element, value];
-                        allparams.push(...pieces.params);
-
-                        if (instance.#methods[pieces.functionName]) {
-                            instance.#methods[pieces.functionName].apply(instance, allparams);
-                        } else {
-                            console.warn(`Handler function '${pieces.functionName}' not found.`);
-                        }
-                        return;
-                    }
-
-
-                    if (t.element.type === "checkbox") 
-                    {
-                        if (!value)
-                            value=false;
-
-                        t.element.checked = value;
-                    } 
-                    else if (t.element.type === "radio")
-                    {
-                        t.element.checked = t.element.value === value;
-                    } 
-                    else 
-                    {
-                        if (!value)
-                            value="";
-
-                        if (t.element.value !== value) 
-                        {
-                            t.element.value = value;
-                        }
-                    }       
-                                    
-                });
-
-/*
+                if (typeof exprvalue === "object") 
+                    exprvalue = JSON.stringify(exprvalue)
+              
+                count++;
+                const regex = new RegExp(`{{\\s*${expr.replace(/[.[\]]/g, '\\$&')}\\s*}}`, 'g');
+                content = content.replace(regex, exprvalue);        
                 
-                const bareaclass = instance.#domDictionary.filter(p=>p.directive===DIR_CLASS && p.directivetype===DIR_TYPE_UI_SETTER && ((instance.#isPrimitive(value) && (p.path===path)) || (!instance.#isPrimitive(value) && (p.path!==""))));
-                bareaclass.forEach(t=>
-                {
-                    let boundvalue = value;
-                    if (bareaclass.length> 1  || !instance.#isPrimitive(boundvalue))
-                        boundvalue = instance.getPathData(t.path);
+            });
+            if (count>0)
+                t.node.textContent = content;
 
-                    if (boundvalue.includes(','))
-                        boundvalue = boundvalue.replaceAll(',', ' ');
-
-                    t.element.className = boundvalue || "";
-            
-                });
-
-                const bareaimgsrc = instance.#domDictionary.filter(p=>p.directive===DIR_IMAGE_SRC && p.directivetype===DIR_TYPE_UI_SETTER && ((instance.#isPrimitive(value) && (p.path===path)) || (!instance.#isPrimitive(value) && (p.path!==""))));
-                bareaimgsrc.forEach(t=>
-                {
-                    let boundvalue = value;
-                    if (bareaimgsrc.length> 1  || !instance.#isPrimitive(boundvalue))
-                        boundvalue = instance.getPathData(t.path);
-
-                    if (boundvalue)
-                    {
-                        t.element.src = boundvalue;
-                    }
-            
-                });
-
-                const bahref = instance.#domDictionary.filter(p=>p.directive===DIR_HREF && p.directivetype===DIR_TYPE_UI_SETTER && ((instance.#isPrimitive(value) && (p.path===path)) || (!instance.#isPrimitive(value) && (p.path!==""))));
-                bahref.forEach(t=>
-                {
-                    let boundvalue = value;
-                    if (bareaimgsrc.length> 1  || !instance.#isPrimitive(boundvalue))
-                        boundvalue = instance.getPathData(t.path);
-
-                    if (boundvalue)
-                    {
-                        t.element.href = boundvalue;
-                    }
-            
-                });
-*/
-           
-        }
-
-        /****** Interpolation ******/
-        interpolate(this);
-       
-        /******* Element boinding ******/
-        updateElements(path,value,this);
+        });
 
     }
+   
+    #applyProxyChangeToDOM(path='root', value=this.#appDataProxy, key, keyobject) 
+    {
+        
+            //Computed handlers get cashed value (updates when used by other, become dirty)
+            const computedfuncs = this.#domDictionary.filter(p=> p.directivetype === DIR_TYPE_COMPUTED);
+            computedfuncs.forEach(t=>
+            {
+              
+                let attribFuncDef = t.expressions[0];
+                let boundvalue = false;
+                attribFuncDef=attribFuncDef.trim();
+                if (this.#computedProperties[attribFuncDef]) {
+                        boundvalue = this.#computedProperties[attribFuncDef].value;
+                } else {
+                    console.warn(`Computed boolean handler '${attribFuncDef}' not found.`);
+                }
+                
+                if (t.directive===DIR_HIDE)
+                    t.element.style.display = boundvalue ? "none" : ""
+                else if (t.directive===DIR_SHOW)      
+                    t.element.style.display = boundvalue ? "" : "none";
+                else if (t.directive===DIR_IF) 
+                {
+                    if (boundvalue)
+                    {
+                        if (!t.element.parentNode)
+                            if (t.elementnextsibling)
+                                t.parentelement.insertBefore(t.element, t.elementnextsibling);
+                    }else
+                    {
+                        if (t.element.parentNode)
+                        {
+                            t.elementnextsibling = t.element.nextSibling;
+                            t.element.remove();
+                        }   
+                    }
+                }
+                else if (t.directive===DIR_CLASS_IF && t.expressions.length>1) 
+                {
+                   let classnames = t.expressions[1].split(/[\s,]+/);
+
+                    // Add classes if condition is true and remove if false
+                    if (boundvalue) {
+                        classnames.forEach(className => {
+                            if (!t.element.classList.contains(className)) {
+                                t.element.classList.add(className); // Add class if not already present
+                            }
+                        });
+                    } else {
+                        classnames.forEach(className => {
+                            if (t.element.classList.contains(className)) {
+                                t.element.classList.remove(className); // Remove class if present
+                            }
+                        });
+                    }
+                }    
+                      
+            });
+
+            //Boolean expressions (react on any data change)
+            const boolexpr = this.#domDictionary.filter(p=> p.directivetype === DIR_TYPE_BOOLEXPR);
+            boolexpr.forEach(t=>
+            {
+                if (!t.expressions)
+                    return;
+
+                   
+                let funcname = "";
+                if (t.expressions.length>2)
+                    funcname=t.expressions[2]
+                else
+                    funcname=t.expressions[1];
+
+                if (!funcname)
+                {
+                    console.error('Could not find function name for computed boolean expression fucntion');
+                    return;
+                }
+                let boundvalue = false;
+                if (this.#computedProperties[funcname]) {
+                    boundvalue = this.#computedProperties[funcname].value;
+                } else {
+                    console.warn(`Computed boolean expression fucntion '${pieces.functionName}' not found.`);
+                }    
+                 
+                
+                if (t.directive===DIR_HIDE)
+                    t.element.style.display = boundvalue ? "none" : ""
+                else if (t.directive===DIR_SHOW)      
+                    t.element.style.display = boundvalue ? "" : "none";
+                else if (t.directive===DIR_IF) 
+                {
+                      if (boundvalue)
+                      {
+                          if (!t.element.parentNode)
+                              if (t.elementnextsibling)
+                                  t.parentelement.insertBefore(t.element, t.elementnextsibling);
+                      }else
+                      {
+                          if (t.element.parentNode)
+                          {
+                              t.elementnextsibling = t.element.nextSibling;
+                              t.element.remove();
+                          }   
+                      }
+                } 
+                else if (t.directive===DIR_CLASS_IF && t.expressions.length>1) 
+                {
+                   let classnames = t.expressions[1].split(/[\s,]+/);
+
+                    // Add classes if condition is true and remove if false
+                    if (boundvalue) {
+                        classnames.forEach(className => {
+                            if (!t.element.classList.contains(className)) {
+                                t.element.classList.add(className); // Add class if not already present
+                            }
+                        });
+                    } else {
+                        classnames.forEach(className => {
+                            if (t.element.classList.contains(className)) {
+                                t.element.classList.remove(className); // Remove class if present
+                            }
+                        });
+                    }
+                }     
+                        
+            });
+
+            const bareabind = this.#domDictionary.filter(p=>p.directive===DIR_BIND);
+            bareabind.forEach(t=>
+            {
+             
+                let boundvalue = "";
+                if (!t.element._bareaObject || !t.element._bareaKey)
+                    return;
+
+                if (path===ROOT_OBJECT)
+                {
+                    boundvalue = t.element._bareaObject[t.element._bareaKey];
+                }
+                else
+                {
+                    boundvalue = this.#getChangedProxyValue(keyobject, key, t.element._bareaObject, t.element._bareaKey); 
+                }
+                if (!boundvalue)
+                    return;
+
+               
+                let attribFuncDef = t.element.getAttribute(DIR_BIND_HANDLER);
+                if (attribFuncDef)
+                {
+                    attribFuncDef=attribFuncDef.trim();
+                    if (this.#getExpressionType(attribFuncDef, DIR_BIND_HANDLER)==="INVALID")
+                        return;
+                 
+                    let pieces = this.#parseFunctionCall(attribFuncDef);
+                    let allparams = [VERB_SET_UI, t.element, boundvalue];
+                    allparams.push(...pieces.params);
+
+                    if (this.#methods[pieces.functionName]) {
+                        this.#methods[pieces.functionName].apply(this, allparams);
+                    } else {
+                        console.warn(`Handler function '${pieces.functionName}' not found.`);
+                    }
+                    return;
+                }
+
+
+                if (t.element.type === "checkbox") 
+                {
+                    if (!boundvalue)
+                        boundvalue=false;
+
+                    t.element.checked = boundvalue;
+                } 
+                else if (t.element.type === "radio")
+                {
+                    t.element.checked = t.element.value === boundvalue;
+                } 
+                else 
+                {
+                    if (!boundvalue)
+                        value="";
+
+                    if (t.element.value !== boundvalue) 
+                    {
+                        t.element.value = boundvalue;
+                    }
+                }       
+                                
+            });
+
+            
+            const bareaclass = this.#domDictionary.filter(p=>p.directive===DIR_CLASS && p.directivetype===DIR_TYPE_UI_SETTER);
+            bareaclass.forEach(t=>
+            {
+                let boundvalue = "";
+                if (!t.element._bareaObject || !t.element._bareaKey)
+                    return;
+
+                if (path===ROOT_OBJECT)
+                {
+                    boundvalue = t.element._bareaObject[t.element._bareaKey];
+                }
+                else
+                {
+                    boundvalue = this.#getChangedProxyValue(keyobject, key, t.element._bareaObject, t.element._bareaKey);
+                    if (!boundvalue)
+                        return;
+
+                }
+             
+                if (boundvalue.includes(','))
+                    boundvalue = boundvalue.replaceAll(',', ' ');
+
+                t.element.className = boundvalue || "";
+        
+            });
+
+            const bareaimgsrc = this.#domDictionary.filter(p=>p.directive===DIR_IMAGE_SRC && p.directivetype===DIR_TYPE_UI_SETTER);
+            bareaimgsrc.forEach(t=>
+            {
+                let boundvalue = "";
+                if (!t.element._bareaObject || !t.element._bareaKey)
+                    return;
+
+                if (path===ROOT_OBJECT)
+                {
+                    boundvalue = t.element._bareaObject[t.element._bareaKey];
+                }
+                else
+                {
+                    boundvalue = this.#getChangedProxyValue(keyobject, key, t.element._bareaObject, t.element._bareaKey);
+                    if (!boundvalue)
+                        return;
+
+                }
+
+                if (boundvalue && (t.element.src!==boundvalue))
+                {
+                    t.element.src = boundvalue;
+                }
+        
+            });
+
+            const bahref = this.#domDictionary.filter(p=>p.directive===DIR_HREF && p.directivetype===DIR_TYPE_UI_SETTER);
+            bahref.forEach(t=>
+            {
+                let boundvalue = "";
+                if (!t.element._bareaObject || !t.element._bareaKey)
+                    return;
+
+                if (path===ROOT_OBJECT)
+                {
+                    boundvalue = t.element._bareaObject[t.element._bareaKey];
+                }
+                else
+                {
+                    boundvalue = this.#getChangedProxyValue(keyobject, key, t.element._bareaObject, t.element._bareaKey);
+                    if (!boundvalue)
+                        return;
+
+                }
+
+                if (boundvalue && (t.element.href !== boundvalue))
+                {
+                    t.element.href = boundvalue;
+                }
+        
+            });
+          
+    }
+
+    #getChangedProxyValue(changedobject, changedkey, bareaobject, bareakey)
+    {
+        if (!changedobject)
+            return null;
+        if (typeof changedobject !== 'object')
+            return null;
+
+        let arraychange = false;
+        if (changedobject.hasOwnProperty(changedkey))
+            if (Array.isArray(changedobject[changedkey]))
+                arraychange=true;
+
+        if (arraychange)
+        {
+            let charray = changedobject[changedkey];
+            if (charray.length===0)
+                return null;
+
+        
+            for (let i = 0; i < charray.length; i++) 
+            {
+                if (this.#shallowEqual(bareaobject,charray[i]))
+                {
+                    const columnNames = Object.keys(charray[i]);
+                    for (let col of columnNames) 
+                    {
+                        if (col===bareakey)
+                            return charray[i][col];
+                    }
+                }
+            }
+
+            return null;
+        }
+        else
+        {
+            if (!this.#shallowEqual(bareaobject,changedobject))
+                return null;
+            if (bareakey!==changedkey)
+                return null;
+        }
+
+        return changedobject[bareakey];
+    }
+       
+        
+       
+
+    
 
     /*** Internal Helpers ***/
-    #getLastKeyFromPath(path)
+
+    #shallowEqual(obj1, obj2) 
+    {
+        if (obj1 === obj2) return true; // Fast reference check
+      
+        const keys1 = Reflect.ownKeys(obj1);
+        const keys2 = Reflect.ownKeys(obj2);
+        if (keys1.length !== keys2.length) return false;
+      
+        return keys1.every(key => obj1[key] === obj2[key]);
+    }
+
+    #getLastKeyName(path)
     {
         if (!path)
             return 'root';
@@ -1182,65 +1258,87 @@ class BareaApp
         return key;
     }
 
-    #getLastObjectPath(path)
+    #getLastObjectName(path)
     {
         if (!path)
             return 'root';
 
         let retval = null;
-        let count = 0;
         let keys = path.split('.');
-        keys.forEach(t=>
+        for (let i = 0; i < keys.length-1; i++) 
         {
-            count++;
+           
             if (!retval)
-                retval=t
+                retval=keys[i]
             else
-                retval+='.'+t;
+                retval+='.'+keys[i];
 
-            if (count===(keys.length-2))
-                return;
+        };
 
-        });
+        if (retval==null)
+            retval = path;
          
         return retval;
 
     }
 
-    #parseFunctionCall(str) {
+    // #parseFunctionCall(str) {
 
-         // Convert string values to correct types
+    //      // Convert string values to correct types
+    //     function convertValue(val) {
+    //         if (/^'.*'$|^".*"$/.test(val)) {
+    //             return val.slice(1, -1); // Remove quotes for strings
+    //         }
+    //         if (val === "true") return true;
+    //         if (val === "false") return false;
+    //         if (val === "null") return null;
+    //         if (!isNaN(val)) {
+    //             return val.includes(".") ? parseFloat(val) : parseInt(val, 10); // Convert numbers
+    //         }
+    //         if (/^\[.*\]$/.test(val)) {
+    //             return val.slice(1, -1).split(',').map(item => convertValue(item.trim())); // Convert array elements
+    //         }
+    //         return val; // Keep as a string
+    //     }
+
+    //     const match = str.match(/^(\w+)\((.*)\)$/);
+    //     if (!match) return null; // Invalid format
+    
+    //     const functionName = match[1]; // Extract function name
+    //     const paramsString = match[2].trim(); // Extract parameters
+    
+    //     // If paramsString is empty (e.g., `sayHello()`), return an empty array
+    //     if (paramsString === "") return { functionName, params: [] };
+    
+    //     // Regex to split parameters correctly while keeping quoted values intact
+    //     const params = [...paramsString.matchAll(/'[^']*'|"[^"]*"|[^,]+/g)]
+    //         .map(match => convertValue(match[0].trim())); // Convert each value properly
+    
+    //     return { functionName, params };
+    // }
+
+    #parseFunctionCall(str) {
         function convertValue(val) {
-            if (/^'.*'$|^".*"$/.test(val)) {
-                return val.slice(1, -1); // Remove quotes for strings
-            }
+            if (/^["'].*["']$/.test(val)) return val.slice(1, -1); // Remove quotes
             if (val === "true") return true;
             if (val === "false") return false;
             if (val === "null") return null;
-            if (!isNaN(val)) {
-                return val.includes(".") ? parseFloat(val) : parseInt(val, 10); // Convert numbers
-            }
-            if (/^\[.*\]$/.test(val)) {
-                return val.slice(1, -1).split(',').map(item => convertValue(item.trim())); // Convert array elements
-            }
-            return val; // Keep as a string
+            if (!isNaN(val)) return val.includes(".") ? parseFloat(val) : parseInt(val, 10);
+            if (/^\[.*\]$/.test(val)) return val.slice(1, -1).split(',').map(item => convertValue(item.trim()));
+            return val;
         }
-
+    
         const match = str.match(/^(\w+)\((.*)\)$/);
-        if (!match) return null; // Invalid format
+        if (!match) return null;
     
-        const functionName = match[1]; // Extract function name
-        const paramsString = match[2].trim(); // Extract parameters
-    
-        // If paramsString is empty (e.g., `sayHello()`), return an empty array
-        if (paramsString === "") return { functionName, params: [] };
-    
-        // Regex to split parameters correctly while keeping quoted values intact
-        const params = [...paramsString.matchAll(/'[^']*'|"[^"]*"|[^,]+/g)]
-            .map(match => convertValue(match[0].trim())); // Convert each value properly
+        const [_, functionName, paramsString] = match;
+        const params = paramsString.trim() 
+            ? [...paramsString.matchAll(/'[^']*'|"[^"]*"|[^,]+/g)].map(m => convertValue(m[0].trim())) 
+            : [];
     
         return { functionName, params };
     }
+    
     
     #getExpressionType(expression, directive) 
     {
@@ -1253,7 +1351,7 @@ class BareaApp
                 return "INVALID";
 
             if (expression.toLowerCase().startsWith('root.'))
-                return EXPR_TYPE_PATH;
+                return EXPR_TYPE_ROOT_PATH;
 
             return EXPR_TYPE_OBJREF_PATH;
         }
@@ -1283,7 +1381,7 @@ class BareaApp
         if (directive === DIR_FOREACH)
         {
             if ((expression.includes('root.')))
-                return EXPR_TYPE_PATH;
+                return EXPR_TYPE_ROOT_PATH;
 
             if (!(expression.includes('.')))
                 return EXPR_TYPE_COMPUTED;
@@ -1300,7 +1398,7 @@ class BareaApp
                 return INTERPOL_INDEX;
 
             if (expression.toLowerCase().startsWith('root.'))
-                return EXPR_TYPE_PATH;
+                return EXPR_TYPE_ROOT_PATH;
 
             if (expression.includes('.'))
                 return EXPR_TYPE_OBJREF_PATH;
