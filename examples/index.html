@@ -194,7 +194,7 @@
                                 <i>Add / Remove elements based on an expression</i>
                                 <br />
                                 <br />
-                                <b>&lt;div ba-if="canShowText()" &gt;&lt;/div&gt;</b>
+                                <b>&lt;div ba-if="canShowText" &gt;&lt;/div&gt;</b>
                                 <i>Add / Remove elements based on a computed function</i>
                                 <br />
                                 <br />
@@ -327,7 +327,7 @@
                 {
                     //ba-click handler to show more data
                     //Available parameters: event, element, data, this = bareaapp
-                    this.getData().model.shows = getRamonesShows();
+                    this.getData().model.shows = getRamonesShows().slice(0,8);
                     element.disabled=true;
                 }
             },
@@ -336,7 +336,7 @@
                 sortedShows:function()
                 {
 
-                    return this.getData().model.shows.slice(0,20);
+                    return this.getData().model.shows.slice(0,8);
                     // return this.getData().model.shows.sort((a, b) => {
                     //         let modifier = 1;
                            
@@ -363,12 +363,13 @@
             },
             mounted: function(data) 
             {
-                data.model.shows = getRamonesShows().slice(0,10);
+                data.model.shows = getRamonesShows().slice(0,3);
             }
          };
 
          bareaapp.mount("app",appcontent);
 
+         /*
          console.log(bareaapp.createdByFullName);
 
          bareaapp.getData().createdByFirstName = 'Stellan';
@@ -385,7 +386,7 @@
 
         let x = false;
        
-
+*/
         
     </script>
 

@@ -138,7 +138,7 @@ class BareaApp
             Object.keys(content.computed).forEach(key => {
                 if (typeof content.computed[key] === "function") {
                     this.#enableComputedProperties=true;
-                    this.#computedProperties[key] = new BareaComputedProperty(content.computed[key], this);
+                    this.#computedProperties[key] = new BareaComputedProperty(content.computed[key], key, this);
                     this.#computedKeys.push(key);
                 }
             });
@@ -499,7 +499,7 @@ class BareaApp
                         const funcname = `exprFunc_${this.#bareaId}`;
                         expressions.push(funcname);
                         this.#enableComputedProperties=true;
-                        this.#computedProperties[funcname] = new BareaComputedProperty(boolfunc, this);
+                        this.#computedProperties[funcname] = new BareaComputedProperty(boolfunc,funcname, this);
                         this.#computedKeys.push(funcname);
                         const odo = this.#createDomDictionaryObject(el,el.parentElement,null,attr.name,"", DIR_TYPE_BOOLEXPR, true,"","",templateId,expressions);
                         this.#domDictionary.push(odo);
@@ -732,23 +732,18 @@ class BareaApp
     
     }
 
-    #renderTemplates(operation='init', path='root') 
+    #renderTemplates(key='init', path='root', value) 
     {
 
         let foreacharray = [];
   
-        //throw new Error('renderTemplates was called with an object in the array');
-        //Also occurs on ba-bind to an object in the array
+        //Indicates an update of an array, we don't render on updates
         if (path.includes('['))
             return; 
 
-        let isSinglePush = operation === "push";
-        let templates = [];
-        if (path.toLowerCase()==='root')
-            templates = this.#domDictionary.filter(p=> p.directivetype===DIR_TYPE_TEMPLATE);
-        else
-            templates = this.#domDictionary.filter(p=> p.path.includes(path) && p.directivetype===DIR_TYPE_TEMPLATE);
-
+        let isSinglePush = key === "push";
+        let templates = this.#domDictionary.filter(p=> p.directivetype===DIR_TYPE_TEMPLATE);
+      
         templates.forEach(template => {
 
             let [varname, datapath] = template.path.split(" in ").map(s => s.trim());
@@ -1549,19 +1544,23 @@ class BareaApp
 
 class BareaComputedProperty 
 {
-    constructor(getter, barea) {
+    constructor(getter, key, barea) {
+      this.name=key;
       this.getter = getter;
       this.dirty = true;
-      this.dependencies = new Set();
+      //this.dependencies = new Set();
+      this.dependencyPaths = new Set();
       this.barea = barea;
-      this.setDirty = () => {
+      this.setDirty = (reason_obj, reason_key) => {
         this.dirty = true;
       };
     }
   
-    track(dep) {
+    track(dep, target, key) {
       dep.addSubscriber(this.setDirty);
-      this.dependencies.add(dep);
+      //this.dependencies.add(dep);
+      let path = {dependency: dep, depTarget: target, depKey: key };
+      this.dependencyPaths.add(path);
     }
   
     get value() {
@@ -1590,19 +1589,23 @@ class BareaComputedProperty
       this.activeComputed = null;
     }
   
+    //Called on proxy change get
+    //If a computed func is active on the singelton tracker
+    //Look for a dependency or creates one for the computed func
     track(target, key) 
     {
       if (this.activeComputed) {
           let dep = this.#getDependency(target, key);
-          this.activeComputed.track(dep);
+          this.activeComputed.track(dep, target, key);
       }
     }
 
-    notify(target, key) 
+    //Called on proxy change set
+    //Finds a dependency and notifies all subscribers
+    notify(reason_obj, reason_key) 
     {
-       let dep = this.#getDependency(target, key);
-       if (dep)
-          dep.notify();
+       let dep = this.#getDependency(reason_obj, reason_key);
+        dep.notify(reason_obj, reason_key);
     }
 
     #getDependency(target, key) {
@@ -1627,8 +1630,8 @@ class BareaComputedProperty
             addSubscriber(set_dirty_func) {
                 subscribers.add(set_dirty_func);
             },
-            notify() {
-                subscribers.forEach(set_dirty_func => set_dirty_func());
+            notify(reason_obj, reason_key) {
+                subscribers.forEach(set_dirty_func => set_dirty_func(reason_obj, reason_key));
             }
         };
     }
