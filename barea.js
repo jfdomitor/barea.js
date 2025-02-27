@@ -62,7 +62,7 @@ const EXPR_TYPE_MIX_EXPR = 'mixexpr';
 const ROOT_OBJECT = 'root';
 
 //Array functions to handle in the proxy
-const ARRAY_FUNCTIONS = ['push', 'pop', 'splice', 'shift', 'unshift', 'sort', 'reverse'];
+const ARRAY_FUNCTIONS = ['push', 'pop', 'splice', 'shift', 'unshift','sort', 'reverse']; 
 
 class BareaApp 
 {
@@ -570,7 +570,7 @@ class BareaApp
                             return evalMixedExpr(condition, subobj,rootobj);
                         }
 
-                          //Make up a functionname
+                        //Make up a functionname
                         this.#bareaId++;
                         const funcname = `exprFunc_${this.#bareaId}`;
                         expressions.push(funcname);
@@ -579,11 +579,9 @@ class BareaApp
                         this.#computedKeys.push(funcname);
                         const odo = this.#createDomDictionaryObject(el,el.parentElement,null,attr.name,"", DIR_TYPE_BOOLEXPR, true,"","",templateId,expressions);
                         this.#domDictionary.push(odo);
-
                       
                     }
                    
-                  
                 }
 
                 if ([DIR_CLASS, DIR_IMAGE_SRC,DIR_HREF].includes(attr.name))
