@@ -229,6 +229,7 @@
                     <br />
                     <button class="beautiful-btn" ba-click="editHandler('Editing...')" ba-path="root.model">Edit Notes</button>
                     <button class="beautiful-btn" ba-click="showMoreRamones('Hey ho lets go')">Show a lot more shows</button>
+                    <button class="beautiful-btn" ba-click="addShowLine()">Add Line</button>
                     <br />
                     <br />
                     <table>
@@ -243,7 +244,10 @@
                         </thead>
                         <tbody>
                             <tr ba-foreach="show in sortedShows">
-                                <td>{{index}}</td>
+                                <td>
+                                    <span ba-hide="root.edit">{{index}}</span>
+                                    <span ba-show="root.edit"><input type="checkbox" ba-bind="show.marked" /></span>
+                                </td>
                                 <td>{{show.Date}}</td>
                                 <td>
                                     <span ba-hide="root.edit">{{show.Note}}</span>
@@ -329,6 +333,11 @@
                     //Available parameters: event, element, data, this = bareaapp
                     this.getData().model.shows = getRamonesShows().slice(0,8);
                     element.disabled=true;
+                },
+                addShowLine: function() 
+                {
+                    let current_array = this.getData().model.shows;
+                    current_array.unshift({Date:'', Note:''});
                 }
             },
             computed:{

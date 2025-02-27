@@ -732,14 +732,14 @@ class BareaApp
     
     }
 
-    #renderTemplates(key='init', path='root', value) 
+    #renderTemplates(key='init', path='root', value=[]) 
     {
 
         let foreacharray = [];
   
-        //Indicates an update of an array, we don't render on updates
-        if (path.includes('['))
-            return; 
+        //Important: Only render on array operations like pop, push, unshift etc
+       if (!Array.isArray(value))
+            return;
 
         let isSinglePush = key === "push";
         let templates = this.#domDictionary.filter(p=> p.directivetype===DIR_TYPE_TEMPLATE);
@@ -1183,17 +1183,26 @@ class BareaApp
             return null;
 
         let arraychange = false;
-        if (changedobject.hasOwnProperty(changedkey))
-            if (Array.isArray(changedobject[changedkey]))
+        let charray = null;
+        if (Array.isArray(changedobject))
+        {
+            arraychange=true;
+            charray = changedobject;
+            if (charray.length===0)
+                return null;
+        }
+        if (!arraychange && changedobject.hasOwnProperty(changedkey))
+        {
+            if (Array.isArray(changedobject[changedkey])){
                 arraychange=true;
+                charray =  changedobject[changedkey];
+                if (charray.length===0)
+                    return null;
+            }
+        }
 
         if (arraychange)
         {
-            let charray = changedobject[changedkey];
-            if (charray.length===0)
-                return null;
-
-        
             for (let i = 0; i < charray.length; i++) 
             {
                 if (this.#shallowEqual(bareaobject,charray[i]))
@@ -1276,41 +1285,6 @@ class BareaApp
         return retval;
 
     }
-
-    // #parseFunctionCall(str) {
-
-    //      // Convert string values to correct types
-    //     function convertValue(val) {
-    //         if (/^'.*'$|^".*"$/.test(val)) {
-    //             return val.slice(1, -1); // Remove quotes for strings
-    //         }
-    //         if (val === "true") return true;
-    //         if (val === "false") return false;
-    //         if (val === "null") return null;
-    //         if (!isNaN(val)) {
-    //             return val.includes(".") ? parseFloat(val) : parseInt(val, 10); // Convert numbers
-    //         }
-    //         if (/^\[.*\]$/.test(val)) {
-    //             return val.slice(1, -1).split(',').map(item => convertValue(item.trim())); // Convert array elements
-    //         }
-    //         return val; // Keep as a string
-    //     }
-
-    //     const match = str.match(/^(\w+)\((.*)\)$/);
-    //     if (!match) return null; // Invalid format
-    
-    //     const functionName = match[1]; // Extract function name
-    //     const paramsString = match[2].trim(); // Extract parameters
-    
-    //     // If paramsString is empty (e.g., `sayHello()`), return an empty array
-    //     if (paramsString === "") return { functionName, params: [] };
-    
-    //     // Regex to split parameters correctly while keeping quoted values intact
-    //     const params = [...paramsString.matchAll(/'[^']*'|"[^"]*"|[^,]+/g)]
-    //         .map(match => convertValue(match[0].trim())); // Convert each value properly
-    
-    //     return { functionName, params };
-    // }
 
     #parseFunctionCall(str) {
         function convertValue(val) {
