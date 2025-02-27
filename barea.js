@@ -342,7 +342,12 @@ class BareaApp
                         if (['push', 'pop', 'splice', 'shift', 'unshift'].includes(value.name)) 
                         {
                             return (...args) => {
+
                                 const result = Array.prototype[value.name].apply(target, args);
+
+                                if (this.#enableComputedProperties)
+                                    dependencyTracker.notify(target,key);
+                               
                                 callback(currentpath, target, key, target); // Trigger DOM update on array changes
                                 return result;
                             };
