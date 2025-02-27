@@ -252,14 +252,13 @@ class BareaApp
 
         const keys = path.match(/[^.[\]]+/g);
         if (!keys) 
-            return this.#appDataProxy; // Handle cases where regex fails
+            return this.#appDataProxy; 
 
         let target = this.#appDataProxy;
     
-        // Loop with for (faster than forEach)
         for (let i = 0; i < keys.length; i++) {
-            if (i === 0 && keys[i].toLowerCase() === 'root') continue; // Skip 'root' only if it's the first key
-            if (!target) return undefined; // Exit early if target becomes null/undefined
+            if (i === 0 && keys[i].toLowerCase() === 'root') continue; 
+            if (!target) return undefined; 
             target = target[keys[i]];
         }
     
@@ -273,46 +272,20 @@ class BareaApp
 
         const keys = path.match(/[^.[\]]+/g);
         if (!keys) 
-            return this.#appData; // Handle cases where regex fails
+            return this.#appData; 
 
         let target = this.#appData;
     
-        // Loop with for (faster than forEach)
         for (let i = 0; i < keys.length; i++) {
-            if (i === 0 && keys[i].toLowerCase() === 'root') continue; // Skip 'root' only if it's the first key
-            if (!target) return undefined; // Exit early if target becomes null/undefined
+            if (i === 0 && keys[i].toLowerCase() === 'root') continue; 
+            if (!target) return undefined; 
             target = target[keys[i]];
         }
     
         return target;
     }
 
-    setPathData(data, path, value) {
-        const keys = path.match(/[^.[\]]+/g); 
-        if (!keys) 
-            return false; 
-    
-        let target = data;
-        for (let i = 0; i < keys.length - 1; i++) {
-
-            if (i === 0 && keys[i].toLowerCase() === 'root') continue;
-            
-            const key = isNaN(keys[i]) ? keys[i] : Number(keys[i]); // Convert indexes to numbers
-    
-            // Check property existence WITHOUT triggering reactivity
-            if (!Reflect.getOwnPropertyDescriptor(target, key)) {
-                target[key] = isNaN(keys[i + 1]) ? {} : [];
-            }
-    
-            target = Reflect.get(target, key); //Safe access
-        }
-    
-        // Ensure only the exact property triggers reactivity
-        const lastKey = isNaN(keys[keys.length - 1]) ? keys[keys.length - 1] : Number(keys[keys.length - 1]);
-        return Reflect.set(target, lastKey, value); //Reactivity-safe set
-    }
-
-
+   
     #createReactiveProxy(callback, data, currentpath = "root") 
     {
         const handler = {
@@ -496,52 +469,75 @@ class BareaApp
                         const odo = this.#createDomDictionaryObject(el,el.parentElement,null,attr.name,"", DIR_TYPE_COMPUTED, true,"","",templateId,expressions);
                         this.#domDictionary.push(odo);
                     }
-                    else
+                    else if (exprtype === EXPR_TYPE_EXPR)
                     {
-                        //The user has given a boolean expression in the attribute
-                        //We aim to convert it to a computed function
+                        let condition = expressions[0];
+                        const evalobj = this.#appDataProxy;
 
-                        let condition = "";
-                        if (expressions.length>1)
-                            condition = expressions[1]
-                        else
-                            condition = expressions[0];
-
-                        //Register boolean expression as a computed function
-                        const boolfunc = function()
+                        const boolRootFunc = function()
                         {
-                            function  evaluateCondition(condition, context) {
+                            function  evalRootExpr(condition, context) {
                                 try {
                                     return new Function("contextdata", `return ${condition};`)(context);
                                 } catch (error) {
-                                    console.error("Error evaluating condition:", error);
+                                    console.error(`Error evaluating expression ${condition} on ${el.localName} with attribute ${attr.name}`);
                                     return false;
                                 }
                             }
                             
-                            if (exprtype===EXPR_TYPE_EXPR)
-                            {
-                                condition=condition.replace('root.','contextdata.');
-                                return evaluateCondition(condition, this.#appDataProxy);
-                            }
-                            else
-                            {
-                                //EXPR_TYPE_OBJREF_EXPR, example: show.showText===true
-                                //TODO: get object from row, get objkeyname = show
-                                //condition=condition.replace(objkeyname+'.','contextdata.');
-                                //return evaluateCondition(condition, rowobject);
-                            }
+                            condition=condition.replaceAll('root.','contextdata.');
+                            return evalRootExpr(condition, evalobj);
                         }
 
                         //Make up a functionname
-                        this.baId++;
+                        this.#bareaId++;
                         const funcname = `exprFunc_${this.#bareaId}`;
                         expressions.push(funcname);
                         this.#enableComputedProperties=true;
-                        this.#computedProperties[funcname] = new BareaComputedProperty(boolfunc,funcname, this);
+                        this.#computedProperties[funcname] = new BareaComputedProperty(boolRootFunc,funcname, this);
                         this.#computedKeys.push(funcname);
                         const odo = this.#createDomDictionaryObject(el,el.parentElement,null,attr.name,"", DIR_TYPE_BOOLEXPR, true,"","",templateId,expressions);
                         this.#domDictionary.push(odo);
+
+                    }
+                    else if (exprtype === EXPR_TYPE_OBJREF_EXPR)
+                    {
+                       
+                        //EXPR_TYPE_OBJREF_EXPR, example: show.showText===true
+                        let condition = expressions[0];
+                        const varname = el.getAttribute(META_ARRAY_VARNAME);
+                        const evalobj = el._bareaObject;
+                        if (!varname)
+                            return;
+                        if (!evalobj)
+                            return;
+
+                        const boolObjFunc = function()
+                        {
+                            function  evalObjExpr(condition, context) {
+                                try {
+                                    return new Function("contextdata", `return ${condition};`)(context);
+                                } catch (error) {
+                                    console.error(`Error evaluating expression ${condition} on ${el.localName} with attribute ${attr.name}`);
+                                    return false;
+                                }
+                            }
+                            
+                            condition=condition.replace(varname+'.','contextdata.');
+                            return evalObjExpr(condition, evalobj);
+                        }
+
+                          //Make up a functionname
+                        this.#bareaId++;
+                        const funcname = `exprFunc_${this.#bareaId}`;
+                        expressions.push(funcname);
+                        this.#enableComputedProperties=true;
+                        this.#computedProperties[funcname] = new BareaComputedProperty(boolObjFunc,funcname, this);
+                        this.#computedKeys.push(funcname);
+                        const odo = this.#createDomDictionaryObject(el,el.parentElement,null,attr.name,"", DIR_TYPE_BOOLEXPR, true,"","",templateId,expressions);
+                        this.#domDictionary.push(odo);
+
+                      
                     }
                    
                   
@@ -704,8 +700,6 @@ class BareaApp
                         if (log.active)
                             console.log(log.name, "type: " + item.element.type, "key: " + valuekey, "input value: " + item.element.checked);
 
-
-                        //this.setPathData(this.#appDataProxy, path, item.element.checked);
                         item.element._bareaObject[item.element._bareaKey] =  item.element.checked;
                     } 
                     else if (item.element.type === "radio") 
@@ -715,7 +709,7 @@ class BareaApp
 
                         if (item.element.checked)
                             item.element._bareaObject[item.element._bareaKey] =  item.element.value;
-                            //this.setPathData(this.#appDataProxy, path, item.element.value);
+
                     } 
                     else 
                     {
@@ -723,7 +717,7 @@ class BareaApp
                             console.log(log.name, "type: " + item.element.type, "key: " + valuekey, "input value: " + item.element.value);
 
                         item.element._bareaObject[item.element._bareaKey] =  item.element.value;
-                        //this.setPathData(this.#appDataProxy, path, item.element.value);
+
                     }
                 });
 
@@ -741,23 +735,14 @@ class BareaApp
                 attribFuncDef=attribFuncDef.trim();
                 item.element.addEventListener("click", (event) => {
   
-                    if (!(item.element._bareaObject && item.element._bareaKey))
-                    {
-                        //User created element
-                        let objpath = this.#getLastObjectName(item.path);
-                        item.element._bareaObject=this.getProxifiedPathData(objpath);
-                        item.element._bareaKey=this.#getLastKeyName(item.path);
-                    }
-                    else
-                    {
-                             //Template created element
-                    }
-
-                    let allparams = [event,item.element, item.element._bareaObject];
+                    let eventdata = this.#appDataProxy;
+                    if (item.element._bareaObject)
+                        eventdata = item.element._bareaObject;
+                  
+                    let allparams = [event, item.element, eventdata];
                     let pieces = this.#parseFunctionCall(attribFuncDef);
                     allparams.push(...pieces.params);
 
-                    // Call the function from the handlers object
                     if (this.#methods[pieces.functionName]) {
                         this.#methods[pieces.functionName].apply(this, allparams);
                     } else {

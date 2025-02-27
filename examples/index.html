@@ -230,6 +230,7 @@
                     <button class="beautiful-btn" ba-click="editHandler('Editing...')" ba-path="root.model">Edit Notes</button>
                     <button class="beautiful-btn" ba-click="showMoreRamones('Hey ho lets go')">Show a lot more shows</button>
                     <button class="beautiful-btn" ba-click="addShowLine()">Add Line</button>
+                    <button class="beautiful-btn" ba-click="deleteMarkedLines()">Delete marked lines</button>
                     <br />
                     <br />
                     <table>
@@ -244,7 +245,7 @@
                         </thead>
                         <tbody>
                             <tr ba-foreach="show in sortedShows">
-                                <td>
+                                <td ba-class-if="show.marked?bluebg">
                                     <span ba-hide="root.edit">{{index}}</span>
                                     <span ba-show="root.edit"><input type="checkbox" ba-bind="show.marked" /></span>
                                 </td>
@@ -259,6 +260,8 @@
                         </tbody>
                     </table>
 
+                    <br />
+                    
                   
             </div>
 
@@ -338,6 +341,12 @@
                 {
                     let current_array = this.getData().model.shows;
                     current_array.unshift({Date:'', Note:''});
+                },
+                deleteMarkedLines: function() 
+                {
+                    let current_array = this.getData().model.shows.filter(p=> !p.marked);
+                    this.getData().model.shows = current_array;
+
                 }
             },
             computed:{
@@ -378,25 +387,6 @@
 
          bareaapp.mount("app",appcontent);
 
-         /*
-
-         console.log(bareaapp.createdByFullName);
-
-         bareaapp.getData().createdByFirstName = 'Stellan';
-
-         console.log(bareaapp.createdByFullName);
-
-         bareaapp.getData().createdByLastName = 'Nilsson';
-
-        console.log(bareaapp.createdByFullName);
-
-        bareaapp.getData().edit=true;
-
-        console.log(bareaapp.createdByFullName);
-
-        let x = false;
-       
-*/
         
     </script>
 
