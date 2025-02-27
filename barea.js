@@ -67,6 +67,7 @@ class BareaApp
     #appElement; 
     #bareaId=0;
     #appDataProxy; 
+    #appDataProxyMap = new WeakMap(); //Cache proxied objects
     #appData;
     #methods = {};
     #consoleLogs = [];
@@ -171,18 +172,18 @@ class BareaApp
             return;
         }
           
-        const proxy = this.#createReactiveProxy((path, value, key, keyobject) => 
+        const proxy = this.#createReactiveProxy((path, value, key, target) => 
         { 
             //Handles changes in the data and updates the dom
 
             let log = this.#getConsoleLog(1);
             if (log.active)
-                console.log(log.name, path, value, key);
+                console.log(log.name, path, value, key, target);
 
             this.#renderTemplates(key, path, value);
             this.#setupBindings(path);
             this.#applyProxyChangeInterpolation(path, value);
-            this.#applyProxyChangeToDOM(path, value, key, keyobject);
+            this.#applyProxyChangeToDOM(path, value, key, target);
 
         }, this.#appData);
 
@@ -317,40 +318,45 @@ class BareaApp
                 const value = target[key];
                 const newPath = Array.isArray(target) ? `${currentpath}[${key}]` : `${currentpath}.${key}`;
               
-
-                // If the value is already a proxy, return it as is to avoid recursive proxying
-                if (value && value.__isProxy) {
-                    return value;
-                }
-
                 if (this.#enableComputedProperties)
                     dependencyTracker.track(target, key);
                
                 if (typeof value === 'object' && value !== null) 
                 {
-                    if (!Array.isArray(value) && this.#enableBareaId && !value.hasOwnProperty('baId')) 
-                    {
-                            value.baId = ++this.#bareaId;  
+                    if (this.#appDataProxyMap.has(value)) {
+                        return this.#appDataProxyMap.get(value);
                     }
 
-                    return this.#createReactiveProxy(callback, value, newPath); 
+                    if (!Array.isArray(value) && this.#enableBareaId && !value.hasOwnProperty('baId')) 
+                    {
+                        value.baId = ++this.#bareaId;  
+                    }
+
+                    let proxiedValue = this.#createReactiveProxy(callback, value, newPath); 
+                    this.#appDataProxyMap.set(value, proxiedValue);
+                    return proxiedValue;
 
                 }else{
 
                     if(typeof value === "function")
                     {
-                        if (['push', 'pop', 'splice', 'shift', 'unshift'].includes(value.name)) 
+                        if (['push', 'pop', 'splice', 'shift', 'unshift', 'sort', 'reverse'].includes(value.name)) 
                         {
-                            return (...args) => {
+                            if (!this.bareaWrappedMethods) {
+                                this.bareaWrappedMethods = new Map();
+                            }
+                            let funckey = currentpath+'_'+value.name;
+                            if (!this.bareaWrappedMethods.has(funckey)) {
+                                this.bareaWrappedMethods.set(funckey, (...args) => {
+                                    const result = Array.prototype[value.name].apply(target, args);
+                                    dependencyTracker.notify(target, key);
+                                    callback(currentpath, value.name, key, target);
+                                    return result;
+                                });
+                            }
+                        
+                            return this.bareaWrappedMethods.get(funckey);
 
-                                const result = Array.prototype[value.name].apply(target, args);
-
-                                if (this.#enableComputedProperties)
-                                    dependencyTracker.notify(target,key);
-                               
-                                callback(currentpath, target, key, target); // Trigger DOM update on array changes
-                                return result;
-                            };
                         }    
         
                     }
@@ -360,24 +366,35 @@ class BareaApp
             },
             set: (target, key, value) => {
 
-                if (target[key] === value) 
+                if (key === "length") {
+                    const oldLength = target.length;
+                    target.length = value;
+                
+                    if (oldLength !== value) {
+                        dependencyTracker.notify(target, key);
+                        callback(currentpath, target, key, target);
+                    }
                     return true;
+                }
+
+                if (target[key] === value) return true;
         
                 target[key] = value;
-
-                if (['length'].includes(key)) 
-                    return true;
 
                 if (this.#enableComputedProperties)
                     dependencyTracker.notify(target,key);
 
                 const path = Array.isArray(target) ? `${currentpath}[${key}]` : `${currentpath}.${key}`;
                 callback(path, value, key, target);
+
                 return true;
             }
         };
         
-        return new Proxy(data, handler);
+        let proxiedValue =new Proxy(data, handler);
+        this.#appDataProxyMap.set(data, proxiedValue);
+        return proxiedValue;
+
     }
     
     #buildDomDictionary(tag = this.#appElement, templateId=-1)

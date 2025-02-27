@@ -331,7 +331,7 @@
                 {
                     //ba-click handler to show more data
                     //Available parameters: event, element, data, this = bareaapp
-                    this.getData().model.shows = getRamonesShows().slice(0,8);
+                    this.getData().model.shows = getRamonesShows().slice(0,10);
                     element.disabled=true;
                 },
                 addShowLine: function() 
@@ -378,7 +378,6 @@
 
          bareaapp.mount("app",appcontent);
 
-         let name = bareaapp.getData().createdByFirstName;
          /*
 
          console.log(bareaapp.createdByFullName);
