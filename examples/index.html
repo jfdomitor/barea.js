@@ -344,8 +344,8 @@
 
                 sortedShows:function()
                 {
-
-                    return this.getData().model.shows.slice(0,8);
+                    let current_array = this.getData().model.shows;
+                    return current_array.slice(0,8);
                     // return this.getData().model.shows.sort((a, b) => {
                     //         let modifier = 1;
                            

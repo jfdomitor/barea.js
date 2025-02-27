@@ -2,7 +2,6 @@
  * barea.js
  * 
  * Author: Johan Filipsson
- * Version: 1.0.0
  * License: MIT
  * Description: A lightweight and reactive JavaScript library for modern web applications.
  * 
@@ -58,8 +57,11 @@ const EXPR_TYPE_OBJREF_PATH = 'objpath';
 const EXPR_TYPE_OBJREF_EXPR = 'objexpr';
 const EXPR_TYPE_EXPR = 'expr';
 
+//The root of your data
 const ROOT_OBJECT = 'root';
 
+//Array functions to handle in the proxy
+const ARRAY_FUNCTIONS = ['push', 'pop', 'splice', 'shift', 'unshift', 'sort', 'reverse'];
 
 class BareaApp 
 {
@@ -180,8 +182,8 @@ class BareaApp
             if (log.active)
                 console.log(log.name, path, value, key, target);
 
-            this.#renderTemplates(key, path, value);
-            this.#setupBindings(path);
+            this.#renderTemplates(path, value, key, target);
+            this.#setupBindings();
             this.#applyProxyChangeInterpolation(path, value);
             this.#applyProxyChangeToDOM(path, value, key, target);
 
@@ -189,7 +191,8 @@ class BareaApp
 
         this.#appDataProxy = proxy;
   
-      
+        //Important: Always directly after proxification
+        this.#buildDomDictionary();
       
 
         if (this.#enableBareaId && ! this.#appDataProxy.hasOwnProperty('baId')) 
@@ -199,7 +202,6 @@ class BareaApp
             this.#mountedHandler.apply(this, [this.#appDataProxy]);
    
 
-        this.#buildDomDictionary();
         this.#renderTemplates();
         this.#setupBindings();
         this.#applyProxyChangeInterpolation();
@@ -319,7 +321,16 @@ class BareaApp
                 const newPath = Array.isArray(target) ? `${currentpath}[${key}]` : `${currentpath}.${key}`;
               
                 if (this.#enableComputedProperties)
+                {
+                    //They will only be tracked if the computed function is run
+                    //The function activates tracking
                     dependencyTracker.track(target, key);
+                    if (Array.isArray(target))
+                    {
+                        //These won't be detected otherwise
+                        ARRAY_FUNCTIONS.forEach(f=>{ dependencyTracker.track(target, f);});
+                    }
+                }
                
                 if (typeof value === 'object' && value !== null) 
                 {
@@ -340,7 +351,7 @@ class BareaApp
 
                     if(typeof value === "function")
                     {
-                        if (['push', 'pop', 'splice', 'shift', 'unshift', 'sort', 'reverse'].includes(value.name)) 
+                        if (ARRAY_FUNCTIONS.includes(value.name)) 
                         {
                             if (!this.bareaWrappedMethods) {
                                 this.bareaWrappedMethods = new Map();
@@ -348,9 +359,15 @@ class BareaApp
                             let funckey = currentpath+'_'+value.name;
                             if (!this.bareaWrappedMethods.has(funckey)) {
                                 this.bareaWrappedMethods.set(funckey, (...args) => {
+
                                     const result = Array.prototype[value.name].apply(target, args);
-                                    dependencyTracker.notify(target, key);
+
+                                    if (this.#enableComputedProperties)
+                                        dependencyTracker.notify(target, key);
+
                                     callback(currentpath, value.name, key, target);
+
+                                    
                                     return result;
                                 });
                             }
@@ -372,7 +389,7 @@ class BareaApp
                 
                     if (oldLength !== value) {
                         dependencyTracker.notify(target, key);
-                        callback(currentpath, target, key, target);
+                        callback(currentpath, value, key, target);
                     }
                     return true;
                 }
@@ -647,7 +664,7 @@ class BareaApp
     }
   
 
-    #setupBindings(path='root') 
+    #setupBindings() 
     {
 
 
@@ -754,16 +771,34 @@ class BareaApp
     
     }
 
-    #renderTemplates(key='init', path='root', value=[]) 
+    /**
+     * Render templates = adding new stuf to the DOM
+     * @param {string} path - The path affected when proxy updated.
+     * @param {any} value - The value changed in the proxy.
+     * @param {string} key - The key in the parent affected object.
+     * @param {any} target - The parent object of what's changed.
+     */
+    #renderTemplates(path='root',value, key='none', target) 
     {
 
         let foreacharray = [];
-  
+        let canrun = false;
+
         //Important: Only render on array operations like pop, push, unshift etc
-       if (!Array.isArray(value))
+       if (Array.isArray(value))
+       {
+            canrun=true;
+       }
+       else
+       {
+            if (this.#isPrimitive(value) && ARRAY_FUNCTIONS.includes(value)) 
+                canrun=true;
+        }
+
+        if (!canrun)
             return;
 
-        let isSinglePush = key === "push";
+
         let templates = this.#domDictionary.filter(p=> p.directivetype===DIR_TYPE_TEMPLATE);
       
         templates.forEach(template => {
@@ -788,24 +823,17 @@ class BareaApp
                 foreacharray = this.getProxifiedPathData(datapath); 
             }
             
-            if (!Array.isArray(foreacharray))
-                return; //throw new Error('renderTemplates could not get array, ' + path);
+            if (!Array.isArray(foreacharray)){
+                console.error('Could not get array in renderTemplates, should not happen if there is a god');
+                return; 
+            }
+               
 
-           if ((foreacharray.length - template.element.children.length) !== 1)
-                isSinglePush=false;
 
            let counter=0;
-            if (!isSinglePush)
-            {
-                this.#removeTemplateChildrenFromDomDictionary(template.id);
-                template.parentelement.innerHTML = ""; // Clear list
-            }
-            else
-            {
-                counter = foreacharray.length-1;
-                foreacharray = foreacharray.slice(-1);
-            }
-
+            this.#removeTemplateChildrenFromDomDictionary(template.id);
+            template.parentelement.innerHTML = ""; // Clear list
+          
             const fragment = document.createDocumentFragment();
 
             foreacharray.forEach(item => {
@@ -1538,34 +1566,56 @@ class BareaApp
    
 }
 
+/*
+
+Attempt to get value (if dirty)
+- Opens up for tracking
+- Gets value
+- Gets dependencies because values are fetched (values fetched in the proxy, while open will be registered as dependencies)
+- Close tracking
+- Return value
+
+Attempt to get value (if not dirty)
+- Return cached value
+
+On notify
+- if target and key is depencencies, it sets it to not dirty
+
+Unshift problem
+- Has no unshift dependency
+- Unshift occurs
+- Notify occurs but no dependency
+- Cached value is fetched
+
+*/
 class BareaComputedProperty 
 {
     constructor(getter, key, barea) {
       this.name=key;
       this.getter = getter;
       this.dirty = true;
-      //this.dependencies = new Set();
       this.dependencyPaths = new Set();
       this.barea = barea;
       this.setDirty = (reason_obj, reason_key) => {
         this.dirty = true;
+        //console.log(this.name + ' is dirty, reason: ' + reason_key);
       };
     }
   
     track(dep, target, key) {
       dep.addSubscriber(this.setDirty);
-      //this.dependencies.add(dep);
       let path = {dependency: dep, depTarget: target, depKey: key };
       this.dependencyPaths.add(path);
     }
   
     get value() {
-      if (this.dirty) {
-        // Automatically track dependencies
+      if (this.dirty) 
+      {
         dependencyTracker.start(this);
         this._value = this.getter.call(this.barea);
         dependencyTracker.stop();
         this.dirty = false;
+        //console.log(this.name + ' was fetched and is not dirty');
       }
       return this._value;
     }
@@ -1634,8 +1684,6 @@ class BareaComputedProperty
 
   }
   
-
-  
-//For computed properties
+//Dependency tracker for computed properties
 const dependencyTracker = new BareaDependencyTracker(); 
 
