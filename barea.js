@@ -55,7 +55,8 @@ const EXPR_TYPE_COMPUTED = 'computed';
 const EXPR_TYPE_OBJREF = 'objref';
 const EXPR_TYPE_OBJREF_PATH = 'objpath';
 const EXPR_TYPE_OBJREF_EXPR = 'objexpr';
-const EXPR_TYPE_EXPR = 'expr';
+const EXPR_TYPE_ROOT_EXPR = 'rootexpr';
+const EXPR_TYPE_MIX_EXPR = 'mixexpr';
 
 //The root of your data
 const ROOT_OBJECT = 'root';
@@ -440,7 +441,8 @@ class BareaApp
 
                 if ([DIR_HIDE, DIR_SHOW, DIR_IF,DIR_CLASS_IF].includes(attr.name))
                 {
-                    const exprtype = this.#getExpressionType(attr.value, attr.name);
+                    const varname = el.getAttribute(META_ARRAY_VARNAME);
+                    const exprtype = this.#getExpressionType(attr.value, attr.name, varname);
                     if (!attr.value)
                         return;
                     if (exprtype==='INVALID')
@@ -469,7 +471,7 @@ class BareaApp
                         const odo = this.#createDomDictionaryObject(el,el.parentElement,null,attr.name,"", DIR_TYPE_COMPUTED, true,"","",templateId,expressions);
                         this.#domDictionary.push(odo);
                     }
-                    else if (exprtype === EXPR_TYPE_EXPR)
+                    else if (exprtype === EXPR_TYPE_ROOT_EXPR)
                     {
                         let condition = expressions[0];
                         const evalobj = this.#appDataProxy;
@@ -505,7 +507,7 @@ class BareaApp
                        
                         //EXPR_TYPE_OBJREF_EXPR, example: show.showText===true
                         let condition = expressions[0];
-                        const varname = el.getAttribute(META_ARRAY_VARNAME);
+                       
                         const evalobj = el._bareaObject;
                         if (!varname)
                             return;
@@ -523,7 +525,7 @@ class BareaApp
                                 }
                             }
                             
-                            condition=condition.replace(varname+'.','contextdata.');
+                            condition=condition.replaceAll(varname+'.','contextdata.');
                             return evalObjExpr(condition, evalobj);
                         }
 
@@ -533,6 +535,47 @@ class BareaApp
                         expressions.push(funcname);
                         this.#enableComputedProperties=true;
                         this.#computedProperties[funcname] = new BareaComputedProperty(boolObjFunc,funcname, this);
+                        this.#computedKeys.push(funcname);
+                        const odo = this.#createDomDictionaryObject(el,el.parentElement,null,attr.name,"", DIR_TYPE_BOOLEXPR, true,"","",templateId,expressions);
+                        this.#domDictionary.push(odo);
+
+                      
+                    }  
+                    else if (exprtype === EXPR_TYPE_MIX_EXPR)
+                    {
+                       
+                        //EXPR_TYPE_OBJREF_EXPR, example: show.showText===true
+                        let condition = expressions[0];
+                       
+                        const subobj = el._bareaObject;
+                        const rootobj = this.#appDataProxy;
+                        if (!varname)
+                            return;
+                        if (!subobj)
+                            return;
+
+                        const boolMixedFunc = function()
+                        {
+                            function  evalMixedExpr(condition, subdata, rootdata) {
+                                try {
+                                    return new Function("subdata","rootdata", `return ${condition};`)(subdata,rootdata);
+                                } catch (error) {
+                                    console.error(`Error evaluating mixed expression ${condition} on ${el.localName} with attribute ${attr.name}`);
+                                    return false;
+                                }
+                            }
+                            
+                            condition=condition.replaceAll('root.','rootdata.');
+                            condition=condition.replaceAll(varname+'.','subdata.');
+                            return evalMixedExpr(condition, subobj,rootobj);
+                        }
+
+                          //Make up a functionname
+                        this.#bareaId++;
+                        const funcname = `exprFunc_${this.#bareaId}`;
+                        expressions.push(funcname);
+                        this.#enableComputedProperties=true;
+                        this.#computedProperties[funcname] = new BareaComputedProperty(boolMixedFunc,funcname, this);
                         this.#computedKeys.push(funcname);
                         const odo = this.#createDomDictionaryObject(el,el.parentElement,null,attr.name,"", DIR_TYPE_BOOLEXPR, true,"","",templateId,expressions);
                         this.#domDictionary.push(odo);
@@ -1344,7 +1387,7 @@ class BareaApp
     }
     
     
-    #getExpressionType(expression, directive) 
+    #getExpressionType(expression, directive, varname) 
     {
         if ([DIR_CLASS, DIR_BIND, DIR_IMAGE_SRC, DIR_HREF].includes(directive))
         {
@@ -1374,8 +1417,13 @@ class BareaApp
                 return "INVALID";
 
             if ((expression.includes('root.')))
-                return EXPR_TYPE_EXPR;
+            {
+                if (varname && expression.includes(varname+'.'))
+                    return EXPR_TYPE_MIX_EXPR;
 
+                return EXPR_TYPE_ROOT_EXPR;
+            }
+              
             if (!(expression.includes('.')))
                 return EXPR_TYPE_COMPUTED;
   

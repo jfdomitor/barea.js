@@ -249,7 +249,7 @@
                                     <span ba-hide="root.edit">{{index}}</span>
                                     <span ba-show="root.edit"><input type="checkbox" ba-bind="show.marked" /></span>
                                 </td>
-                                <td>{{show.Date}}</td>
+                                <td ba-class-if="root.edit&&show.marked?redbg">{{show.Date}}</td>
                                 <td>
                                     <span ba-hide="root.edit">{{show.Note}}</span>
                                     <span ba-show="root.edit"><input type="text" ba-bind="show.Note" /></span>
