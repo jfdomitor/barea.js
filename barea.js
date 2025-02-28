@@ -43,6 +43,9 @@ VERB_SET_UI = 'SET_UI';
 const META_ARRAY_VARNAME = 'ba-varname';
 const META_ARRAY_INDEX = 'ba-index';
 const META_PATH = 'ba-path';
+const META_DYN_FUNC_PREFIX = 'dynFunc_';
+const META_DYN_TEMPLATE_FUNC_PREFIX = 'dynTemplFunc_';
+const META_IS_GENERATED_MARKUP= 'ba-generated';
 
 // Special interpolation expressions
 const INTERPOL_INDEX = 'index';
@@ -63,6 +66,87 @@ const ROOT_OBJECT = 'root';
 
 //Array functions to handle in the proxy
 const ARRAY_FUNCTIONS = ['push', 'pop', 'splice', 'shift', 'unshift','sort', 'reverse']; 
+
+//Path (String) functions
+const getPrincipalBareaPath = function(path) 
+{
+    const segments = path.split('.');
+    return segments.map(segment => {
+      const arrayIndexStart = segment.indexOf('[');
+      if (arrayIndexStart !== -1) {
+        return segment.slice(0, arrayIndexStart);
+      }
+      return segment; 
+    }).join('.'); 
+}
+
+const getLastBareaKeyName = function(path)
+{
+    if (!path)
+        return 'root';
+
+    let keys = path.split('.');
+
+    if (keys.length<2)
+        return 'root';
+   
+    let key = "";
+    keys.forEach(t=>{key=t});
+    return key;
+}
+
+const getLastBareaObjectName = function(path)
+{
+    if (!path)
+        return 'root';
+
+    let retval = null;
+    let keys = path.split('.');
+    for (let i = 0; i < keys.length-1; i++) 
+    {
+       
+        if (!retval)
+            retval=keys[i]
+        else
+            retval+='.'+keys[i];
+
+    };
+
+    if (retval==null)
+        retval = path;
+     
+    return retval;
+
+}
+
+const parseBareaFunctionCall = function(str) 
+{
+    function convertValue(val) {
+        if (/^["'].*["']$/.test(val)) return val.slice(1, -1); // Remove quotes
+        if (val === "true") return true;
+        if (val === "false") return false;
+        if (val === "null") return null;
+        if (!isNaN(val)) return val.includes(".") ? parseFloat(val) : parseInt(val, 10);
+        if (/^\[.*\]$/.test(val)) return val.slice(1, -1).split(',').map(item => convertValue(item.trim()));
+        return val;
+    }
+
+    const match = str.match(/^(\w+)\((.*)\)$/);
+    if (!match) return null;
+
+    const [_, functionName, paramsString] = match;
+    const params = paramsString.trim() 
+        ? [...paramsString.matchAll(/'[^']*'|"[^"]*"|[^,]+/g)].map(m => convertValue(m[0].trim())) 
+        : [];
+
+    return { functionName, params };
+}
+
+
+const hasAnyChar = function(str, chars) 
+{
+    return chars.some(char => str.includes(char));
+}
 
 class BareaApp 
 {
@@ -403,8 +487,14 @@ class BareaApp
     
     #buildDomDictionary(tag = this.#appElement, templateId=-1)
     {
+        let funccounter = 0;
         const templateChildren=[];
 
+        //Delete dynamic functions that was created along with the templates
+        dependencyTracker.deleteDynamicTemplateFunctions();
+
+        //Collect children of the template
+        //User defined
         function collectDescendants(ce) {
             templateChildren.push(ce);
             
@@ -454,8 +544,18 @@ class BareaApp
 
                 if ([DIR_HIDE, DIR_SHOW, DIR_IF,DIR_CLASS_IF].includes(attr.name))
                 {
+                    const genMarkup = el.getAttribute(META_IS_GENERATED_MARKUP);
                     const varname = el.getAttribute(META_ARRAY_VARNAME);
                     const exprtype = this.#getExpressionType(attr.value, attr.name, varname);
+                    funccounter++;
+                    let funcname = "";
+                    if (genMarkup){
+                        funcname = `${META_DYN_TEMPLATE_FUNC_PREFIX}${funccounter}`;
+                    }else{
+                        funcname = `${META_DYN_FUNC_PREFIX}${funccounter}`;
+                    }
+                  
+
                     if (!attr.value)
                         return;
                     if (exprtype==='INVALID')
@@ -505,8 +605,6 @@ class BareaApp
                         }
 
                         //Make up a functionname
-                        this.#bareaId++;
-                        const funcname = `exprFunc_${this.#bareaId}`;
                         expressions.push(funcname);
                         this.#enableComputedProperties=true;
                         this.#computedProperties[funcname] = new BareaComputedProperty(boolRootFunc,funcname, this);
@@ -543,8 +641,6 @@ class BareaApp
                         }
 
                           //Make up a functionname
-                        this.#bareaId++;
-                        const funcname = `exprFunc_${this.#bareaId}`;
                         expressions.push(funcname);
                         this.#enableComputedProperties=true;
                         this.#computedProperties[funcname] = new BareaComputedProperty(boolObjFunc,funcname, this);
@@ -585,7 +681,6 @@ class BareaApp
 
                         //Make up a functionname
                         this.#bareaId++;
-                        const funcname = `exprFunc_${this.#bareaId}`;
                         expressions.push(funcname);
                         this.#enableComputedProperties=true;
                         this.#computedProperties[funcname] = new BareaComputedProperty(boolMixedFunc,funcname, this);
@@ -614,9 +709,9 @@ class BareaApp
 
                     if (exprtype==EXPR_TYPE_ROOT_PATH && !el.hasOwnProperty('_bareaObject'))
                     {
-                        let objpath = this.#getLastObjectName(attr.value);
+                        let objpath = getLastBareaObjectName(attr.value);
                         el._bareaObject=this.getProxifiedPathData(objpath);
-                        el._bareaKey=this.#getLastKeyName(attr.value);
+                        el._bareaKey=getLastBareaKeyName(attr.value);
                      }
 
                     const odo = this.#createDomDictionaryObject(el,el.parentElement,null,attr.name,attr.value, DIR_TYPE_UI_SETTER, true,"","",templateId,null);
@@ -638,9 +733,9 @@ class BareaApp
 
                     if (exprtype==EXPR_TYPE_ROOT_PATH && !el.hasOwnProperty('_bareaObject'))
                     {
-                          let objpath = this.#getLastObjectName(attr.value);
+                          let objpath = getLastBareaObjectName(attr.value);
                           el._bareaObject=this.getProxifiedPathData(objpath);
-                          el._bareaKey=this.#getLastKeyName(attr.value);
+                          el._bareaKey=getLastBareaKeyName(attr.value);
 
                     }
 
@@ -736,7 +831,7 @@ class BareaApp
                             return;
 
                         attribFuncDef=attribFuncDef.trim();
-                        let pieces = this.#parseFunctionCall(attribFuncDef);
+                        let pieces = parseBareaFunctionCall(attribFuncDef);
                         let allparams =  [VERB_SET_DATA, item.element, item.element._bareaObject];
                         allparams.push(...pieces.params);
 
@@ -790,11 +885,19 @@ class BareaApp
                 item.element.addEventListener("click", (event) => {
   
                     let eventdata = this.#appDataProxy;
-                    if (item.element._bareaObject)
-                        eventdata = item.element._bareaObject;
+                    let bapath = item.element.getAttribute(META_PATH);
+                    if (!bapath)
+                    {
+                        if (item.element._bareaObject)
+                            eventdata = item.element._bareaObject;
+                    }
+                    else
+                    {
+                        eventdata = this.getProxifiedPathData(bapath);
+                    }
                   
                     let allparams = [event, item.element, eventdata];
-                    let pieces = this.#parseFunctionCall(attribFuncDef);
+                    let pieces = parseBareaFunctionCall(attribFuncDef);
                     allparams.push(...pieces.params);
 
                     if (this.#methods[pieces.functionName]) {
@@ -823,42 +926,42 @@ class BareaApp
         let foreacharray = [];
         let canrun = false;
 
-        //Important: Only render on array operations like pop, push, unshift etc
-       if (Array.isArray(value))
-       {
-            canrun=true;
-       }
-       else
-       {
-            if (this.#isPrimitive(value) && ARRAY_FUNCTIONS.includes(value)) 
-                canrun=true;
-        }
-
-        // if (!canrun)
-        //     return;
-
-
+      
         let templates = this.#domDictionary.filter(p=> p.directivetype===DIR_TYPE_TEMPLATE);
       
         templates.forEach(template => {
 
             let [varname, datapath] = template.path.split(" in ").map(s => s.trim());
             if (!varname)
-                throw new Error(`No variable name was found in the ${DIR_FOREACH} expression`);
+            {
+                console.error(`No variable name was found in the ${DIR_FOREACH} expression`);
+                return;
+            }
+            if (!datapath)
+            {
+                console.error(`No path or computed function was found in the ${DIR_FOREACH} expression`);
+                return;
+            }
 
             if (this.#getExpressionType(datapath, DIR_FOREACH)===EXPR_TYPE_COMPUTED)
             {
-                if (datapath)
-                {
+                if (this.#computedProperties[datapath])
                     foreacharray = this.#computedProperties[datapath].value;
-                }
                 else
-                {
                     console.warn(`Could not find computed function name in the ${DIR_FOREACH} directive`);
-                }
+
+                //This template is based on a computed array
+                //If the incoming path is not a dependency of the computed property, then return
+                let principalpath = getPrincipalBareaPath(path);
+                if (!dependencyTracker.isDepencencyPath(principalpath, datapath))
+                    return;
             }
             else
             {
+                  //Important: Only render on array operations like pop, push, unshift etc if bound directly with data path
+                if (!(Array.isArray(value) || (this.#isPrimitive(value) && ARRAY_FUNCTIONS.includes(value))))
+                    return;
+                     
                 foreacharray = this.getProxifiedPathData(datapath); 
             }
             
@@ -881,6 +984,7 @@ class BareaApp
                 newtag.innerHTML = template.templateMarkup;
                 newtag.setAttribute(META_ARRAY_VARNAME, varname);
                 newtag.setAttribute(META_ARRAY_INDEX, counter);
+                newtag.setAttribute(META_IS_GENERATED_MARKUP, true);
                 newtag._bareaObject = item;
                 if (newtag.id)
                     newtag.id = newtag.id + `-${counter}` 
@@ -894,6 +998,7 @@ class BareaApp
                     el._bareaObject = item;
                     el.setAttribute(META_ARRAY_VARNAME, varname);
                     el.setAttribute(META_ARRAY_INDEX, counter);
+                    el.setAttribute(META_IS_GENERATED_MARKUP, true);
 
                  
                     if (el.hasAttribute(DIR_BIND)) {
@@ -901,7 +1006,7 @@ class BareaApp
                         if (!attrib.includes(varname + '.'))
                             console.warn(`The ${DIR_BIND} expression ${attrib} used in an element under ${DIR_FOREACH} does not match the ${DIR_FOREACH} expression, should reference '${varname}'.`);
                     
-                        el._bareaKey=this.#getLastKeyName(attrib);
+                        el._bareaKey=getLastBareaKeyName(attrib);
                     }
                    
                     
@@ -910,6 +1015,8 @@ class BareaApp
                 let templatechildren = newtag.querySelectorAll("*"); 
                 templatechildren.forEach(child => 
                 {
+                    child.setAttribute(META_IS_GENERATED_MARKUP, true);
+
                     if (child.id)
                         child.id = child.id + `-${counter}` 
                     else
@@ -965,7 +1072,7 @@ class BareaApp
                 }
                 else if (exprtype===EXPR_TYPE_OBJREF_PATH){
                     let subobj = this.#getClosestBareaObject(t.element);
-                    let key =  this.#getLastKeyName(expr);
+                    let key =  getLastBareaKeyName(expr);
                     exprvalue = subobj[key];
                 }
                 else if (expr === INTERPOL_INDEX)
@@ -1123,18 +1230,10 @@ class BareaApp
             bareabind.forEach(t=>
             {
              
-                let boundvalue = "";
                 if (!t.element._bareaObject || !t.element._bareaKey)
                     return;
 
-                if (path===ROOT_OBJECT)
-                {
-                    boundvalue = t.element._bareaObject[t.element._bareaKey];
-                }
-                else
-                {
-                    boundvalue = this.#getChangedProxyValue(keyobject, key, t.element._bareaObject, t.element._bareaKey); 
-                }
+                let boundvalue = t.element._bareaObject[t.element._bareaKey];
                 if (!boundvalue)
                     return;
 
@@ -1146,7 +1245,7 @@ class BareaApp
                     if (this.#getExpressionType(attribFuncDef, DIR_BIND_HANDLER)==="INVALID")
                         return;
                  
-                    let pieces = this.#parseFunctionCall(attribFuncDef);
+                    let pieces = parseBareaFunctionCall(attribFuncDef);
                     let allparams = [VERB_SET_UI, t.element, boundvalue];
                     allparams.push(...pieces.params);
 
@@ -1187,21 +1286,13 @@ class BareaApp
             const bareaclass = this.#domDictionary.filter(p=>p.directive===DIR_CLASS && p.directivetype===DIR_TYPE_UI_SETTER);
             bareaclass.forEach(t=>
             {
-                let boundvalue = "";
+
                 if (!t.element._bareaObject || !t.element._bareaKey)
                     return;
 
-                if (path===ROOT_OBJECT)
-                {
-                    boundvalue = t.element._bareaObject[t.element._bareaKey];
-                }
-                else
-                {
-                    boundvalue = this.#getChangedProxyValue(keyobject, key, t.element._bareaObject, t.element._bareaKey);
-                    if (!boundvalue)
-                        return;
-
-                }
+                let boundvalue = t.element._bareaObject[t.element._bareaKey];
+                if (!boundvalue)
+                    return;
              
                 if (boundvalue.includes(','))
                     boundvalue = boundvalue.replaceAll(',', ' ');
@@ -1213,21 +1304,12 @@ class BareaApp
             const bareaimgsrc = this.#domDictionary.filter(p=>p.directive===DIR_IMAGE_SRC && p.directivetype===DIR_TYPE_UI_SETTER);
             bareaimgsrc.forEach(t=>
             {
-                let boundvalue = "";
                 if (!t.element._bareaObject || !t.element._bareaKey)
                     return;
 
-                if (path===ROOT_OBJECT)
-                {
-                    boundvalue = t.element._bareaObject[t.element._bareaKey];
-                }
-                else
-                {
-                    boundvalue = this.#getChangedProxyValue(keyobject, key, t.element._bareaObject, t.element._bareaKey);
-                    if (!boundvalue)
-                        return;
-
-                }
+                let boundvalue = t.element._bareaObject[t.element._bareaKey];
+                if (!boundvalue)
+                    return;
 
                 if (boundvalue && (t.element.src!==boundvalue))
                 {
@@ -1239,21 +1321,12 @@ class BareaApp
             const bahref = this.#domDictionary.filter(p=>p.directive===DIR_HREF && p.directivetype===DIR_TYPE_UI_SETTER);
             bahref.forEach(t=>
             {
-                let boundvalue = "";
                 if (!t.element._bareaObject || !t.element._bareaKey)
                     return;
 
-                if (path===ROOT_OBJECT)
-                {
-                    boundvalue = t.element._bareaObject[t.element._bareaKey];
-                }
-                else
-                {
-                    boundvalue = this.#getChangedProxyValue(keyobject, key, t.element._bareaObject, t.element._bareaKey);
-                    if (!boundvalue)
-                        return;
-
-                }
+                let boundvalue = t.element._bareaObject[t.element._bareaKey];
+                if (!boundvalue)
+                    return;
 
                 if (boundvalue && (t.element.href !== boundvalue))
                 {
@@ -1264,142 +1337,10 @@ class BareaApp
           
     }
 
-    #getChangedProxyValue(changedobject, changedkey, bareaobject, bareakey)
-    {
-        if (!changedobject)
-            return null;
-        if (typeof changedobject !== 'object')
-            return null;
-
-        let arraychange = false;
-        let charray = null;
-        if (Array.isArray(changedobject))
-        {
-            arraychange=true;
-            charray = changedobject;
-            if (charray.length===0)
-                return null;
-        }
-        if (!arraychange && changedobject.hasOwnProperty(changedkey))
-        {
-            if (Array.isArray(changedobject[changedkey])){
-                arraychange=true;
-                charray =  changedobject[changedkey];
-                if (charray.length===0)
-                    return null;
-            }
-        }
-
-        if (arraychange)
-        {
-            for (let i = 0; i < charray.length; i++) 
-            {
-                if (this.#shallowEqual(bareaobject,charray[i]))
-                {
-                    const columnNames = Object.keys(charray[i]);
-                    for (let col of columnNames) 
-                    {
-                        if (col===bareakey)
-                            return charray[i][col];
-                    }
-                }
-            }
-
-            return null;
-        }
-        else
-        {
-            if (!this.#shallowEqual(bareaobject,changedobject))
-                return null;
-            if (bareakey!==changedkey)
-                return null;
-        }
-
-        return changedobject[bareakey];
-    }
-       
-        
-       
-
-    
+   
 
     /*** Internal Helpers ***/
-
-    #shallowEqual(obj1, obj2) 
-    {
-        if (obj1 === obj2) return true; // Fast reference check
-      
-        const keys1 = Reflect.ownKeys(obj1);
-        const keys2 = Reflect.ownKeys(obj2);
-        if (keys1.length !== keys2.length) return false;
-      
-        return keys1.every(key => obj1[key] === obj2[key]);
-    }
-
-    
-    #getLastKeyName(path)
-    {
-        if (!path)
-            return 'root';
-
-        let keys = path.split('.');
-
-        if (keys.length<2)
-            return 'root';
-       
-        let key = "";
-        keys.forEach(t=>{key=t});
-        return key;
-    }
-
-    #getLastObjectName(path)
-    {
-        if (!path)
-            return 'root';
-
-        let retval = null;
-        let keys = path.split('.');
-        for (let i = 0; i < keys.length-1; i++) 
-        {
-           
-            if (!retval)
-                retval=keys[i]
-            else
-                retval+='.'+keys[i];
-
-        };
-
-        if (retval==null)
-            retval = path;
-         
-        return retval;
-
-    }
-
-    #parseFunctionCall(str) {
-        function convertValue(val) {
-            if (/^["'].*["']$/.test(val)) return val.slice(1, -1); // Remove quotes
-            if (val === "true") return true;
-            if (val === "false") return false;
-            if (val === "null") return null;
-            if (!isNaN(val)) return val.includes(".") ? parseFloat(val) : parseInt(val, 10);
-            if (/^\[.*\]$/.test(val)) return val.slice(1, -1).split(',').map(item => convertValue(item.trim()));
-            return val;
-        }
-    
-        const match = str.match(/^(\w+)\((.*)\)$/);
-        if (!match) return null;
-    
-        const [_, functionName, paramsString] = match;
-        const params = paramsString.trim() 
-            ? [...paramsString.matchAll(/'[^']*'|"[^"]*"|[^,]+/g)].map(m => convertValue(m[0].trim())) 
-            : [];
-    
-        return { functionName, params };
-    }
-    
-    
-    #getExpressionType(expression, directive, varname) 
+    #getExpressionType = function(expression, directive, varname) 
     {
         if ([DIR_CLASS, DIR_BIND, DIR_IMAGE_SRC, DIR_HREF].includes(directive))
         {
@@ -1435,10 +1376,10 @@ class BareaApp
 
                 return EXPR_TYPE_ROOT_EXPR;
             }
-              
+            
             if (!(expression.includes('.')))
                 return EXPR_TYPE_COMPUTED;
-  
+
             return EXPR_TYPE_OBJREF_EXPR;
         }
 
@@ -1473,15 +1414,23 @@ class BareaApp
             return EXPR_TYPE_OBJREF;
         }
 
-      
-       return "INVALID";
+    
+    return "INVALID";
 
     }
-    
-    #hasAnyChar(str, chars) {
-        return chars.some(char => str.includes(char));
+
+    #shallowEqual(obj1, obj2) 
+    {
+        if (obj1 === obj2) return true; // Fast reference check
+      
+        const keys1 = Reflect.ownKeys(obj1);
+        const keys2 = Reflect.ownKeys(obj2);
+        if (keys1.length !== keys2.length) return false;
+      
+        return keys1.every(key => obj1[key] === obj2[key]);
     }
-   
+
+    
     #getClosestBareaObject(element)
     {
         if (element.hasOwnProperty("_bareaObject"))
@@ -1644,13 +1593,11 @@ class BareaComputedProperty
       this.barea = barea;
       this.setDirty = (principalpath) => {
         this.dirty = true;
-        //console.log(this.name + ' is dirty, reason: ' + principalpath);
       };
     }
   
     track(dep, principalpath) {
       dep.addSubscriber(this.name, this.setDirty); //The computed property tells that tracker: Hi i'm a new subscriber
-      //let path = {dependency: dep, depTarget: target, depKey: key };
       this.dependencyPaths.add(principalpath);
     }
   
@@ -1661,7 +1608,6 @@ class BareaComputedProperty
         this._value = this.getter.call(this.barea);
         dependencyTracker.stop();
         this.dirty = false;
-        //console.log(this.name + ' was fetched and is not dirty');
       }
       return this._value;
     }
@@ -1681,6 +1627,44 @@ class BareaComputedProperty
     stop() {
       this.activeComputed = null;
     }
+
+    deleteDynamicTemplateFunctions()
+    {
+        this.dependencies.forEach((childMap) => {
+            childMap.subscribers.forEach((value, key) => {
+              if (key.includes(META_DYN_TEMPLATE_FUNC_PREFIX)) {
+                childMap.subscribers.delete(key); 
+              }
+            });
+          });
+    }
+
+    isDepencencyPath(path, funcname)
+    {
+        if (!path)
+            return false;
+        if (!funcname)
+            return false;
+
+        if (!this.dependencies.has(path))
+            return false;
+
+        for (let childKey of this.dependencies.keys()) 
+        {
+            if (childKey!==path)
+                continue;
+
+            let childMap = this.dependencies.get(childKey); 
+        
+            for (let key of childMap.subscribers.keys()) {
+                if (key===funcname) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
   
     //Called on proxy change get
     //If a computed func is active on the singelton tracker
@@ -1690,7 +1674,7 @@ class BareaComputedProperty
         if (!objpath)
             return;
 
-        let principalpath = this.#getPrincipalPath(objpath);
+        let principalpath = getPrincipalBareaPath(objpath);
         if (!principalpath)
             return;
 
@@ -1713,7 +1697,7 @@ class BareaComputedProperty
         if (!objpath)
             return;
 
-        let principalpath = this.#getPrincipalPath(objpath);
+        let principalpath = getPrincipalBareaPath(objpath);
         if (!principalpath)
             return;
 
@@ -1729,16 +1713,11 @@ class BareaComputedProperty
 
     #getDependency(principalpath) 
     {
-        let depsForTarget = this.dependencies.get(principalpath);
-        if (!depsForTarget) {
-            depsForTarget = new Map();
-            this.dependencies.set(principalpath, depsForTarget);
-        }
-
-        let dep = depsForTarget.get(principalpath);
+        let dep = this.dependencies.get(principalpath);
         if (!dep) {
             dep = this.#createDependency(principalpath);
-            depsForTarget.set(principalpath, dep);
+
+            this.dependencies.set(principalpath, dep);
         }
 
         return dep;
@@ -1748,36 +1727,24 @@ class BareaComputedProperty
     {
         let subscribers = new Map();
         return {
-            subscribers:subscribers, 
+            subscribers : subscribers, 
             addSubscriber(name, set_dirty_func) {
                 if (!subscribers.has(name))
                 {
                     subscribers.set(name, set_dirty_func);
-                    console.log(`${name} is subscribing to path: ${principalpath}`);
+                    //console.log(`${name} is subscribing to path: ${principalpath}`);
                 }
             },
             notify(principalpath) { 
                 subscribers.forEach((set_dirty_func, name) => {
                     set_dirty_func(principalpath); 
-                    console.log(`Notified ${name} with path: ${principalpath}`);
+                    //console.log(`Notified ${name} with path: ${principalpath}`);
                 });
             }
         };
     }
 
-    #getPrincipalPath(path) {
-        const segments = path.split('.');
-        return segments.map(segment => {
-          const arrayIndexStart = segment.indexOf('[');
-          if (arrayIndexStart !== -1) {
-            return segment.slice(0, arrayIndexStart);
-          }
-          return segment; 
-        }).join('.'); 
-      }
-
   }
   
 //Dependency tracker for computed properties
 const dependencyTracker = new BareaDependencyTracker(); 
-
