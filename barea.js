@@ -298,11 +298,15 @@ class BareaApp
                 {
                     //They will only be tracked if the computed function is run
                     //The function activates tracking
-                    dependencyTracker.track(target, key);
+                    if(typeof value === "function")
+                        dependencyTracker.track(newPath, value.name);
+                    else
+                        dependencyTracker.track(newPath, null);
+
                     if (Array.isArray(target))
                     {
                         //These won't be detected otherwise
-                        ARRAY_FUNCTIONS.forEach(f=>{ dependencyTracker.track(target, f);});
+                        ARRAY_FUNCTIONS.forEach(f=>{ dependencyTracker.track(currentpath, f);});
                     }
                 }
                
@@ -337,7 +341,7 @@ class BareaApp
                                     const result = Array.prototype[value.name].apply(target, args);
 
                                     if (this.#enableComputedProperties)
-                                        dependencyTracker.notify(target, key);
+                                        dependencyTracker.notify(currentpath, value.name);
 
                                     callback(currentpath, value.name, key, target);
 
@@ -357,13 +361,15 @@ class BareaApp
             },
             set: (target, key, value) => {
 
+                const newPath = Array.isArray(target) ? `${currentpath}[${key}]` : `${currentpath}.${key}`;
+
                 if (key === "length") {
                     const oldLength = target.length;
                     target.length = value;
                 
                     if (oldLength !== value) {
-                        dependencyTracker.notify(target, key);
-                        callback(currentpath, value, key, target);
+                        dependencyTracker.notify(newPath, value.name);
+                        callback(newPath, value, key, target);
                     }
                     return true;
                 }
@@ -373,10 +379,17 @@ class BareaApp
                 target[key] = value;
 
                 if (this.#enableComputedProperties)
-                    dependencyTracker.notify(target,key);
+                {
+                    if(typeof value === "function")
+                        dependencyTracker.notify(newPath, value.name);
+                    else
+                        dependencyTracker.notify(newPath, null);
 
-                const path = Array.isArray(target) ? `${currentpath}[${key}]` : `${currentpath}.${key}`;
-                callback(path, value, key, target);
+                }
+                   
+
+               
+                callback(newPath, value, key, target);
 
                 return true;
             }
@@ -821,8 +834,8 @@ class BareaApp
                 canrun=true;
         }
 
-        if (!canrun)
-            return;
+        // if (!canrun)
+        //     return;
 
 
         let templates = this.#domDictionary.filter(p=> p.directivetype===DIR_TYPE_TEMPLATE);
@@ -1323,6 +1336,7 @@ class BareaApp
         return keys1.every(key => obj1[key] === obj2[key]);
     }
 
+    
     #getLastKeyName(path)
     {
         if (!path)
@@ -1562,6 +1576,14 @@ class BareaApp
             this.#consoleLogs[logidx].active = active;
     }
 
+    #getConsoleLog(id) 
+    {
+        const log = this.#consoleLogs.find(log => log.id === id);
+        if (!log)
+            return {id:-1, name:"", active:false};
+        return log;
+    }
+
     printConsoleLogs()
     {
       console.log('barea.js available logs:');
@@ -1573,19 +1595,12 @@ class BareaApp
             {id: 1, name: "Proxy call back: ", active:false},
             {id: 2, name: "Update dom on proxy change: ", active:false},
             {id: 3, name: "Update proxy on user input: ", active:false},
-            {id: 4, name: "Build dom dictionary: ", active:false}
+            {id: 4, name: "Build dom dictionary: ", active:false},
+            {id: 5, name: "Debug dependency tracking: ", active:false}
         ];
     } 
 
-    #getConsoleLog(id) 
-    {
-        const log = this.#consoleLogs.find(log => log.id === id);
-        if (!log)
-            return {id:-1, name:"", active:false};
-        return log;
-    }
-
-  
+    
                    
     /* Dom Handler */
     #loadedHandler =  (event) => {
@@ -1627,16 +1642,16 @@ class BareaComputedProperty
       this.dirty = true;
       this.dependencyPaths = new Set();
       this.barea = barea;
-      this.setDirty = (reason_obj, reason_key) => {
+      this.setDirty = (principalpath) => {
         this.dirty = true;
-        //console.log(this.name + ' is dirty, reason: ' + reason_key);
+        //console.log(this.name + ' is dirty, reason: ' + principalpath);
       };
     }
   
-    track(dep, target, key) {
-      dep.addSubscriber(this.setDirty);
-      let path = {dependency: dep, depTarget: target, depKey: key };
-      this.dependencyPaths.add(path);
+    track(dep, principalpath) {
+      dep.addSubscriber(this.name, this.setDirty); //The computed property tells that tracker: Hi i'm a new subscriber
+      //let path = {dependency: dep, depTarget: target, depKey: key };
+      this.dependencyPaths.add(principalpath);
     }
   
     get value() {
@@ -1652,10 +1667,11 @@ class BareaComputedProperty
     }
   }
 
-  class BareaDependencyTracker {
+  class BareaDependencyTracker 
+  {
     constructor() {
       this.activeComputed = null;
-      this.dependencies = new WeakMap();
+      this.dependencies = new Map();
     }
   
     start(computed) {
@@ -1669,49 +1685,96 @@ class BareaComputedProperty
     //Called on proxy change get
     //If a computed func is active on the singelton tracker
     //Look for a dependency or creates one for the computed func
-    track(target, key) 
+    track(objpath, funcname) 
     {
+        if (!objpath)
+            return;
+
+        let principalpath = this.#getPrincipalPath(objpath);
+        if (!principalpath)
+            return;
+
+        if (principalpath==ROOT_OBJECT)
+            return;
+
+        if (funcname)
+            principalpath = principalpath+'.'+funcname.toLowerCase();
+
       if (this.activeComputed) {
-          let dep = this.#getDependency(target, key);
-          this.activeComputed.track(dep, target, key);
+          let dep = this.#getDependency(principalpath);
+          this.activeComputed.track(dep, principalpath);
       }
     }
 
     //Called on proxy change set
     //Finds a dependency and notifies all subscribers
-    notify(reason_obj, reason_key) 
+    notify(objpath, funcname) 
     {
-       let dep = this.#getDependency(reason_obj, reason_key);
-        dep.notify(reason_obj, reason_key);
+        if (!objpath)
+            return;
+
+        let principalpath = this.#getPrincipalPath(objpath);
+        if (!principalpath)
+            return;
+
+        if (principalpath==ROOT_OBJECT)
+            return;
+
+        if (funcname)
+            principalpath = principalpath+'.'+funcname.toLowerCase();
+
+       let dep = this.#getDependency(principalpath);
+        dep.notify(principalpath);
     }
 
-    #getDependency(target, key) {
-        let depsForTarget = this.dependencies.get(target);
+    #getDependency(principalpath) 
+    {
+        let depsForTarget = this.dependencies.get(principalpath);
         if (!depsForTarget) {
             depsForTarget = new Map();
-            this.dependencies.set(target, depsForTarget);
+            this.dependencies.set(principalpath, depsForTarget);
         }
 
-        let dep = depsForTarget.get(key);
+        let dep = depsForTarget.get(principalpath);
         if (!dep) {
-            dep = this.#createDependency();
-            depsForTarget.set(key, dep);
+            dep = this.#createDependency(principalpath);
+            depsForTarget.set(principalpath, dep);
         }
 
         return dep;
     }
 
-    #createDependency() {
-        let subscribers = new Set();
+    #createDependency(principalpath) 
+    {
+        let subscribers = new Map();
         return {
-            addSubscriber(set_dirty_func) {
-                subscribers.add(set_dirty_func);
+            subscribers:subscribers, 
+            addSubscriber(name, set_dirty_func) {
+                if (!subscribers.has(name))
+                {
+                    subscribers.set(name, set_dirty_func);
+                    console.log(`${name} is subscribing to path: ${principalpath}`);
+                }
             },
-            notify(reason_obj, reason_key) {
-                subscribers.forEach(set_dirty_func => set_dirty_func(reason_obj, reason_key));
+            notify(principalpath) { 
+                subscribers.forEach((set_dirty_func, name) => {
+                    set_dirty_func(principalpath); 
+                    console.log(`Notified ${name} with path: ${principalpath}`);
+                });
             }
         };
     }
+
+    #getPrincipalPath(path) {
+        const segments = path.split('.');
+        return segments.map(segment => {
+          const arrayIndexStart = segment.indexOf('[');
+          if (arrayIndexStart !== -1) {
+            return segment.slice(0, arrayIndexStart);
+          }
+          return segment; 
+        }).join('.'); 
+      }
 
   }
   

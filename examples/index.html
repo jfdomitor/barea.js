@@ -363,8 +363,8 @@
                 sortedShows:function()
                 {
 
-                    let modifier = this.sortOrder;
-                    let data = this.getData().model.shows.slice(0,10);
+                    let modifier = this.getData().sortOrder;
+                    let data = this.getData().model.shows.slice(0,3);
                     let sorted_data = data.sort((a, b) => {
                            
                                 if (a['Rating'] < b['Rating']) 
@@ -392,7 +392,7 @@
             },
             mounted: function(data) 
             {
-                data.model.shows = getRamonesShows().slice(0,10);
+                data.model.shows = getRamonesShows().slice(0,3);
             }
          };
 
