@@ -1635,6 +1635,9 @@ class BareaComputedProperty
             childMap.subscribers.forEach((value, key) => {
               if (key.includes(META_DYN_TEMPLATE_FUNC_PREFIX)) {
                 childMap.subscribers.delete(key); 
+                if (window[key]) {
+                    delete window[key];
+                }
               }
             });
           });
