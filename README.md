@@ -18,6 +18,8 @@ npm install barea.js
 # Setup
 
 ```
+<div id="app"> -- Your app markup --</div>
+
 <script src="../barea.js"></script>
 <script>
 const bareaapp = getBareaApp();
