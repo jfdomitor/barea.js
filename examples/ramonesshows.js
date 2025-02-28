@@ -1,5 +1,5 @@
 function getRamonesShows()
-    {
+{
             return [
             {
                 "Date": "March 30, 1974",

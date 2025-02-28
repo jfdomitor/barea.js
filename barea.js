@@ -65,7 +65,7 @@ const EXPR_TYPE_MIX_EXPR = 'mixexpr';
 const ROOT_OBJECT = 'root';
 
 //Array functions to handle in the proxy
-const ARRAY_FUNCTIONS = ['push', 'pop', 'splice', 'shift', 'unshift','sort', 'reverse']; 
+const ARRAY_FUNCTIONS = ['push', 'pop', 'splice', 'shift', 'unshift']; //'sort', 'reverse' 
 
 //Path (String) functions
 const getPrincipalBareaPath = function(path) 
@@ -383,7 +383,7 @@ class BareaApp
                 {
                     //They will only be tracked if the computed function is run
                     //The function activates tracking
-                    if(typeof value === "function")
+                    if(typeof value === "function" && ARRAY_FUNCTIONS.includes(value.name))
                         dependencyTracker.track(newPath, value.name);
                     else
                         dependencyTracker.track(newPath, null);
@@ -448,32 +448,23 @@ class BareaApp
 
                 const newPath = Array.isArray(target) ? `${currentpath}[${key}]` : `${currentpath}.${key}`;
 
-                if (key === "length") {
-                    const oldLength = target.length;
-                    target.length = value;
-                
-                    if (oldLength !== value) {
-                        dependencyTracker.notify(newPath, value.name);
-                        callback(newPath, value, key, target);
-                    }
+                if(typeof value === "function" && !ARRAY_FUNCTIONS.includes(value.name))
                     return true;
-                }
 
-                if (target[key] === value) return true;
+                if (target[key] === value) 
+                    return true;
         
                 target[key] = value;
 
                 if (this.#enableComputedProperties)
                 {
-                    if(typeof value === "function")
+                    if(typeof value === "function"  && ARRAY_FUNCTIONS.includes(value.name))
                         dependencyTracker.notify(newPath, value.name);
                     else
                         dependencyTracker.notify(newPath, null);
 
                 }
-                   
-
-               
+                    
                 callback(newPath, value, key, target);
 
                 return true;
@@ -751,7 +742,7 @@ class BareaApp
 
                     if (this.#getExpressionType(attr.value, DIR_CLICK)==='INVALID')
                     {
-                        console.error(`Then ${DIR_CLICK} directive has an invalid (${attr.value}).`);
+                        console.error(`The ${DIR_CLICK} directive is invalid (${attr.value}) click handlers should have parentheses.`);
                         return;
                     }
 
@@ -1050,18 +1041,7 @@ class BareaApp
             let content= t.templateMarkup;
             t.expressions.forEach(expr=> 
             {
-                //Just to speed up
-                //If primitive (path), example : root.model.user.firstname
-                //Only interpolate root, root.model, root.model.user, root.model.user.firstname
-                if (changedvalue)
-                {
-                    if (this.#isPrimitive(changedvalue) && expr.includes('root'))
-                    {
-                        if (!path.includes(expr))
-                            return;
-                    }
-                }
-
+    
                 let exprvalue = null;
                 let exprtype = this.#getExpressionType(expr, DIR_INTERPOLATION);
                 if (exprtype===EXPR_TYPE_COMPUTED){

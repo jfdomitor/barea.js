@@ -31,11 +31,18 @@ const appcontent = {
       {
         //Do something
       }
-      },
-      mounted: function(data) 
+    },
+    computed:
+    {
+      someHandler: function()
       {
-          data.model = getSomeData();
+        //get some data, or calculate something nice
       }
+    },
+    mounted: function(data) 
+    {
+          data.model = getSomeData();
+    }
 };
 
 bareaapp.mount("app",appcontent);
@@ -55,14 +62,15 @@ Override binding logic for complex ui controls, by implementing a function that 
 * Directive: ba-click
 ```
 <button ba-click="saveMyData('arg1', 'arg2')" ba-path="root.model">
-Run functions
+Run functions that do some fun
 ```
 * Directive: ba-foreach
 ```
 <tr ba-foreach="show in root.model.shows">
   <td><input type="text" ba-bind="show.Note"></td>
 </tr>
-A template directive to create new html based on an array in your model, works only on arrays
+A template directive to create new html based on an array in your model, works only on arrays in your model
+or computed properties that returns an array
 ```
 * Directive: ba-class
 ```
@@ -72,32 +80,32 @@ Set class names in your data and have them reflected in the dom.
 * Directive: ba-class-if
 ```
 <div ba-class-if="root.somevalue==='hey ho'?class1,class2,class3" ></div>
-<div ba-class-if="someHandler()?class1,class2,class3" ></div>
-Set class names in your data and have them reflected in the dom.
+<div ba-class-if="someComputedProperty?class1,class2,class3" ></div>
+Set class names in your data based on computed properties or expressions and have them reflected in the dom.
 ```
 * Directive: ba-hide
 ```
 <p ba-hide="root.model.somevalue" ></p>
 Show / Hide an element based on an expression
 
-<div ba-hide="someHandler('arg1', 'arg2')" ></div>
-Show / Hide an element based on a boolean function
+<div ba-hide="someComputedProperty" ></div>
+Show / Hide an element based on a computed property
 ```
 * Directive: ba-show
 ```
 <p ba-show="root.model.somevalue" ></p>
 Show / Hide an element based on an expression
 
-<div ba-show="someHandler('arg1', 'arg2')" ></div>
-Show / Hide an element based on a boolean function
+<div ba-show="someComputedProperty" ></div>
+Show / Hide an element based on a computed property
 ```
 * Directive: ba-if
 ```
 <p ba-if="root.showText" ></p>
 Add / Remove elements based on an expression
 
-<div ba-if="showTextHandler('arg1', 'arg2')" ></div>
-Add / Remove elements based on a boolean function
+<div ba-if="showText" ></div>
+Add / Remove elements based on a computed property
 ```
 * Directive: ba-src
 ```
@@ -116,6 +124,8 @@ Use this to set the href attribute from your data
 Examples:
 {{root.model}}, {{root.model.array}}, {{root.model.somevalue}}
 ```
+* Computed properties with automatic dependency tracking
+
 * Check out the file examples/index.html
 ```
 Tip: run examples/index.html with vs code live server to explore all directives and functions

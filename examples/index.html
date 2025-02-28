@@ -174,8 +174,8 @@
                                 <i>Show / Hide an element based on an expression</i>
                                 <br />
                                 <br />
-                                <b>&lt;div ba-hide="computedFunction()" &gt;&lt;/div&gt;</b>
-                                <i>Show / Hide an element based on a boolean function called when ever the model changes</i>
+                                <b>&lt;div ba-hide="computedProperty" &gt;&lt;/div&gt;</b>
+                                <i>Show / Hide an element based on a computed property called when ever the model changes</i>
                         </li>
                         <li>Directive: ba-show
                             <div class="infobox">
@@ -183,8 +183,8 @@
                                 <i>Show / Hide an element  based on an expression</i>
                                 <br />
                                 <br />
-                                <b>&lt;div ba-show="computedFunction()" &gt;&lt;/div&gt;</b>
-                                <i>Show / Hide an element based on a boolean function called when ever the model changes</i>
+                                <b>&lt;div ba-show="computedProperty" &gt;&lt;/div&gt;</b>
+                                <i>Show / Hide an element based on a computed property called when ever the model changes</i>
                             </div>
                         </li>
 
@@ -223,12 +223,12 @@
             </div>
 
             <div class="box2">
-                    <h1>{{root.model.description}}, count: </h1>
+                    <h1>{{root.model.description}}, count: {{showCount}} </h1>
                     <input type="text" ba-bind="root.model.description"  />
                     <br />
                     <br />
                     <button class="beautiful-btn" ba-click="editHandler('Editing...')" ba-path="root.model">Edit Notes</button>
-                    <button class="beautiful-btn" ba-click="showMoreRamones('Hey ho lets go')">Show a lot more shows</button>
+                    <button class="beautiful-btn" ba-click="showMoreRamones('Hey ho lets go')">Show 50 more shows</button>
                     <button class="beautiful-btn" ba-click="addShowLine()">Add Line</button>
                     <button class="beautiful-btn" ba-click="deleteMarkedLines()">Delete marked lines</button>
                     <br />
@@ -238,13 +238,13 @@
                             <tr>
                                 <td width="5%"><b>Index</b></td>
                                 <td width="20%"><b>Date</b></td>
-                                <td width="20%"><span ba-hide="root.edit"><b>Note</b></span><span ba-show="root.edit"><b>Note (ba-bind)</b></span></td>
-                                <td width="20%"><b ba-click="sortList()">Rate (Click to sort)</b></td>
+                                <td width="20%"><span ba-hide="root.edit" ba-click="sortList()"><b>Note (Click to sort)</b></span><span ba-show="root.edit"><b>Note (ba-bind)</b></span></td>
+                                <td width="20%"><b>Rate</b></td>
                                 <td></td>
                             </tr>
                         </thead>
                         <tbody>
-                            <tr ba-foreach="show in root.model.shows">
+                            <tr ba-foreach="show in sortedShows">
                                 <td ba-class-if="show.marked?bluebg">
                                     <span ba-hide="root.edit">{{index}}</span>
                                     <span ba-show="root.edit"><input type="checkbox" ba-bind="show.marked" /></span>
@@ -300,7 +300,7 @@
          const appcontent = {
             data: {
                 edit:false, showText:true, linkToNPM:"https://www.npmjs.com", createdByFirstName:"Johan", createdByLastName:"Filipsson", 
-                sortOrder: 1,
+                sortOrder: 1, addMoreCount:10,
                 description: "barea.js (Basic Reactivity) is a small reactive java script, it can be use to list Ramones shows and hopefully other things :)",
                 model: { description: "List of Ramones shows", shows:[{Date:"1978-01-01", Note:"Test"}], image:"../examples/stone.png"}, settings:{ myDivClasses: "infobox" }
             },
@@ -335,8 +335,9 @@
                 {
                     //ba-click handler to show more data
                     //Available parameters: event, element, data, this = bareaapp
-                    this.getData().model.shows = getRamonesShows();
-                    element.disabled=true;
+                    this.getData().addMoreCount+=50;
+                    this.getData().model.shows = getRamonesShows().slice((this.getData().addMoreCount-50),this.getData().addMoreCount);
+                    //element.disabled=true;
                 },
                 addShowLine: function() 
                 {
@@ -364,17 +365,16 @@
                 {
 
                     let modifier = this.getData().sortOrder;
-                    let data = this.getData().model.shows.slice(0,3);
+                    let data = this.getData().model.shows.slice(0,this.getData().addMoreCount);
                     let sorted_data = data.sort((a, b) => {
-                           
-                                if (a['Rating'] < b['Rating']) 
-                                    return -1 * modifier;
+                            let valA = a['Note'] || ""; // Convert undefined to ""
+                            let valB = b['Note'] || ""; // Convert undefined to ""
 
-                                if (a['Rating'] > b['Rating']) 
-                                    return 1 * modifier;
-                                    
-                                return 0;
-                            });
+                            if (valA < valB) return -1 * modifier;
+                            if (valA > valB) return 1 * modifier;
+                            return 0;
+                        });
+
 
                     return sorted_data;
                                 
@@ -387,12 +387,16 @@
                 canShowText: function()
                 {
                     return this.getData().showText;
+                },
+                showCount: function()
+                {
+                    return this.getData().model.shows.length;
                 }
 
             },
             mounted: function(data) 
             {
-                data.model.shows = getRamonesShows().slice(0,3);
+                data.model.shows = getRamonesShows().slice(0,this.getData().addMoreCount);
             }
          };
 
