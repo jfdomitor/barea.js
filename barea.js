@@ -153,6 +153,7 @@ class BareaApp
 
     #appElement; 
     #bareaId=0;
+    #internalSysemCounter = 0;
     #appDataProxy; 
     #appDataProxyMap = new WeakMap(); //Cache proxied objects
     #appData;
@@ -487,7 +488,7 @@ class BareaApp
     
     #buildDomDictionary(tag = this.#appElement, templateId=-1)
     {
-        let funccounter = 0;
+
         const templateChildren=[];
 
         //Delete dynamic functions that was created along with the templates
@@ -547,12 +548,12 @@ class BareaApp
                     const genMarkup = el.getAttribute(META_IS_GENERATED_MARKUP);
                     const varname = el.getAttribute(META_ARRAY_VARNAME);
                     const exprtype = this.#getExpressionType(attr.value, attr.name, varname);
-                    funccounter++;
+                    this.#internalSysemCounter++;
                     let funcname = "";
                     if (genMarkup){
-                        funcname = `${META_DYN_TEMPLATE_FUNC_PREFIX}${funccounter}`;
+                        funcname = `${META_DYN_TEMPLATE_FUNC_PREFIX}${this.#internalSysemCounter}`;
                     }else{
-                        funcname = `${META_DYN_FUNC_PREFIX}${funccounter}`;
+                        funcname = `${META_DYN_FUNC_PREFIX}${this.#internalSysemCounter}`;
                     }
                   
 
