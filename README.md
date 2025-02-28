@@ -1,6 +1,6 @@
 # barea.js
 barea.js (Basic Reactivity) is a small reactive java script heavy influenced by vue.js and angular.js (before they became huge frameworks).
-No dependencies just raw reactivity.
+No dependencies just raw reactivity. 
 
 # What about it
 
@@ -8,6 +8,7 @@ No dependencies just raw reactivity.
 * Super light, around than 40Kb unminified
 * Fast
 * No dependencies to other libs
+* Computed properties with automatic dependency tracking
 
 # Install
 ```
@@ -34,7 +35,7 @@ const appcontent = {
     },
     computed:
     {
-      someHandler: function()
+      someComputedProperty: function()
       {
         //get some data, or calculate something nice
       }
@@ -124,8 +125,6 @@ Use this to set the href attribute from your data
 Examples:
 {{root.model}}, {{root.model.array}}, {{root.model.somevalue}}
 ```
-* Computed properties with automatic dependency tracking
-
 * Check out the file examples/index.html
 ```
 Tip: run examples/index.html with vs code live server to explore all directives and functions
