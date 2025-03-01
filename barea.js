@@ -25,6 +25,15 @@ const DIR_IF = 'ba-if';
 const DIR_HREF = 'ba-href';
 const DIR_INTERPOLATION = 'interpolation';
 
+const DIR_GROUP_VISUAL_UPDATE = [DIR_BIND,DIR_CLASS,DIR_HREF,DIR_IMAGE_SRC,DIR_INTERPOLATION]
+const DIR_GROUP_TRACK_AND_FORGET = [DIR_CLICK,DIR_CLASS_IF,DIR_HIDE,DIR_SHOW]
+const DIR_GROUP_MARKUP_GENERATION = [DIR_FOREACH]
+
+const UI_INPUT_TEXT = 1;
+const UI_INPUT_CHECKBOX = 2;
+const UI_INPUT_RADIO = 3;
+
+
 //Directive types
 const DIR_TYPE_BINDING = 'binding';
 const DIR_TYPE_HANDLER = 'uihandler';
@@ -169,6 +178,8 @@ class BareaApp
     #enableInterpolation = true;
     #enableHideUnloaded=false;
     #enableComputedProperties=false;
+    #uiDependencies=new Map();
+
 
     constructor(enableInternalId) 
     {
@@ -476,6 +487,263 @@ class BareaApp
         return proxiedValue;
 
     }
+
+    /***UI TRACKING ***/
+    #detectElements(tag=this.#appElement, templateid=-1)
+    {
+        //Delete dynamic functions that was created along with the templates
+        dependencyTracker.deleteDynamicTemplateFunctions();
+
+        
+        //Collect children of the template (this is the user generated template, that should be replaced)
+        const templateChildren=[];
+        function collectDescendants(ce) {
+            templateChildren.push(ce);
+            for (let i = 0; i < ce.children.length; i++) {
+                collectDescendants(ce.children[i]);
+            }
+        }
+        tag.querySelectorAll(`[${DIR_FOREACH}]`).forEach(parent => {
+            Array.from(parent.children).forEach(child => collectDescendants(child));
+        });
+
+        //Find the world of barea.js (elements with attributes starting with ba-
+        const bareaElements = Array.from(tag.querySelectorAll("*")).filter(el =>
+            el.attributes.length && Array.prototype.some.call(el.attributes, attr => attr.name.startsWith("ba-"))
+        );
+    
+        bareaElements.forEach(el => {
+            const bareaAttributes = Array.from(el.attributes)
+                .filter(attr => attr.name.startsWith("ba-"))
+                .map(attr => ({ name: attr.name, value: attr.value }));
+
+                if (!attr.value)
+                    return;
+
+                this.#internalSysemCounter++;
+        
+                if (DIR_GROUP_VISUAL_UPDATE.includes(attr.name))
+                {
+                    const attribute_value_type = this.#getExpressionType(attr.value, attr.name);
+                    if (attribute_value_type==='INVALID')
+                    {
+                        console.error(`The ${attr.name} directive has an invalid (${attr.value}).`);
+                        return;
+                    }
+
+                    let tracking_obj = this.#createUiBindingTrackingObject(templateid,el,attr.name,attr.value,null,"");
+
+                    if (attribute_value_type==EXPR_TYPE_ROOT_PATH)
+                    {
+                          let objpath = getLastBareaObjectName(attr.value);
+                          tracking_obj.data=this.getProxifiedPathData(objpath);
+                          tracking_obj.key=getLastBareaKeyName(attr.value);
+                    }
+
+                    let handlername = el.getAttribute(DIR_BIND_HANDLER);
+                    if (handlername)
+                    {
+                        tracking_obj.hashandler=true;
+                        tracking_obj.handlername=handlername;
+                    }
+
+                   this.#trackUI(attr.value, tracking_obj);
+                        
+                }
+
+                        
+
+        });
+
+        if (this.#enableInterpolation)
+        {
+            function traverseNodes(node) {
+                if (node.nodeType === Node.TEXT_NODE) 
+                {
+                    if (node.nodeValue.includes("{{") && node.nodeValue.includes("}}"))
+                    {
+                        let paths = this.#getInterpolationPaths(node.nodeValue);
+                        paths.forEach(t=>{
+
+                            const attribute_value_type = this.#getExpressionType(t,DIR_INTERPOLATION);
+                            if (attribute_value_type==='INVALID')
+                            {
+                                console.error(`The ${DIR_INTERPOLATION} directive has an invalid (${t}).`);
+                                return;
+                            }
+
+                            let tracking_obj = this.#createUiInterpolationTrackingObject(templateId,DIR_INTERPOLATION,t,null,"",node);
+                            if (attribute_value_type==EXPR_TYPE_ROOT_PATH)
+                            {
+                                let objpath = getLastBareaObjectName(attr.value);
+                                tracking_obj.data=this.getProxifiedPathData(objpath);
+                                tracking_obj.key=getLastBareaKeyName(attr.value);
+                            }
+
+                            this.#trackUI(attr.value, tracking_obj);
+                        })
+                       
+                    }
+                }
+                
+                // Traverse child nodes
+                for (let child of node.childNodes) {
+                    traverseNodes(child);
+                }
+            }
+            
+            traverseNodes(tag);
+
+        
+        }
+
+        let log = this.#getConsoleLog(4);
+        if (log.active){
+            console.log('UI detection (tracking): ' +  this.#uiDependencies.length);
+            this.#uiDependencies.forEach((value, key) => {
+                console.log(key, value);
+            });
+        }
+
+        
+    }
+
+    #createUiBindingTrackingObject(templateid, element, directive, directivevalue, data, key)
+    {
+        let id = this.#domDictionaryId++;
+        return {id: id, isnew:true, templateid: templateid, directive:directive,  directivevalue:directivevalue, element: element, data:data, key:key, hashandler:false, handlername:""  };
+    }
+    #createUiTemplateTrackingObject(templateid, element, directive, directivevalue, data, key,  parentelement, templatemarkup, templatetagname)
+    {
+        let id = this.#domDictionaryId++;
+        return {id: id, isnew:true, templateid: templateid, directive:directive,  directivevalue:directivevalue, element: element, data:data, key:key, parentelement : parentelement, templatemarkup : templatemarkup, templatetagname : templatetagname };
+    }
+    #createUiInterpolationTrackingObject(templateid, directive, directivevalue, data, key,interpolated_node)
+    {
+        let id = this.#domDictionaryId++;
+        return {id: id, isnew:true, templateid: templateid, directive:directive,  directivevalue:directivevalue, element: null, data:data, key:key, interpolated_node: interpolated_node  };
+    }
+
+    #trackUI(path, ui) 
+    {
+        if (!this.#uiDependencies.has(path)) 
+        {
+            this.#uiDependencies.set(path, new Set());
+        }
+        uiDependencies.get(path).add(ui);
+    }
+    
+    #notifyUI(path) 
+    {
+        if (!this.#uiDependencies.has(path)) 
+            return;
+    
+        this.#uiDependencies.get(path).forEach(ui => 
+        {
+           if (DIR_GROUP_VISUAL_UPDATE.includes(ui.directive)){
+
+                if (ui.hashandler){
+                    this.#runBindHandler(ui, ui.handlername, ui.data, ui.key);
+                    return;
+                }
+
+                if (ui.directive===DIR_BIND)
+                {
+                    if (ui.inputType === UI_INPUT_TEXT){
+                        this.#setInputText(ui.element, ui.data, ui.key);
+                    }
+                    else if (ui.inputType === UI_INPUT_CHECKBOX){
+                        this.#setInputCheckbox(ui.element, ui.data, ui.key);
+                    }
+                    else if (ui.inputType === UI_INPUT_RADIO){
+                        this.#setInputRadio(ui.element, ui.data, ui.key);
+                    }
+                }
+                else if (ui.directive===DIR_CLASS){
+                    this.#setClass(ui.element,ui.data,ui.key,ui.orgvalue);
+                }
+                else if (ui.directive===DIR_HREF){
+                    this.#setHref(ui.element,ui.data,ui.key);
+                }
+                else if (ui.directive===DIR_IMAGE_SRC){
+                    this.#setSrc(ui.element,ui.data,ui.key);
+                }
+                
+           }
+           
+        });
+    }
+
+    #runBindHandler(ui, handlername, data, key)
+    {
+
+        if (!ui.handlerpieces)
+            ui.handlerpieces = parseBareaFunctionCall(handlername);
+
+        let allparams = [VERB_SET_UI, element, data[key], data];
+        allparams.push(...ui.handlerpieces.params);
+
+        if (this.#methods[ui.handlerpieces.functionName]) {
+            this.#methods[ui.handlerpieces.functionName].apply(this, allparams);
+        } else {
+            console.warn(`Handler function '${ui.handlerpieces.functionName}' not found.`);
+        }
+    }
+
+    #setInputText(element, data, key) {
+        if (element && element.value !== data[key]) 
+        {
+            element.value = data[key];
+        }
+    }
+
+    #setInputCheckbox(element, data, key) 
+    {
+        if (element && element.checked !== data[key]) 
+        {
+            element.checked = data[key];
+        }
+    }
+
+    #setInputRadio(element, data, key) {
+        if (element && element.type === 'radio' && data[key] !== undefined && element.checked !== (element.value === data[key])) 
+        {
+            element.checked = element.value === data[key];
+        }
+    }
+
+    #setClass(element, data, key, orgvalue) 
+    {
+        if (!data[key])
+            return;
+
+        if (!orgattributes)
+            orgattributes="";
+     
+        let classes = data[key];
+        if (classes.includes(','))
+            classes = classes.replaceAll(',', ' ');
+    
+        element.className = classes || orgvalue;
+    }
+
+    #setSrc(element, data, key) 
+    {
+        if (!data[key])
+            return;
+    
+        element.src = data[key];
+    }
+
+    #setHref(element, data, key) 
+    {
+        if (!data[key])
+            return;
+
+        element.href = data[key];
+    }
+
+    
     
     #buildDomDictionary(tag = this.#appElement, templateId=-1)
     {
@@ -489,7 +757,6 @@ class BareaApp
         //User defined
         function collectDescendants(ce) {
             templateChildren.push(ce);
-            
             for (let i = 0; i < ce.children.length; i++) {
                 collectDescendants(ce.children[i]);
             }
