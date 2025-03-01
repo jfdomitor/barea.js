@@ -26,7 +26,7 @@ const DIR_HREF = 'ba-href';
 const DIR_INTERPOLATION = 'interpolation';
 
 const DIR_GROUP_VISUAL_UPDATE = [DIR_BIND,DIR_CLASS,DIR_HREF,DIR_IMAGE_SRC,DIR_INTERPOLATION]
-const DIR_GROUP_TRACK_AND_FORGET = [DIR_CLICK,DIR_CLASS_IF,DIR_HIDE,DIR_SHOW]
+const DIR_GROUP_TRACK_AND_FORGET = [DIR_CLICK,DIR_CLASS_IF,DIR_HIDE,DIR_SHOW, DIR_IF]
 const DIR_GROUP_MARKUP_GENERATION = [DIR_FOREACH]
 
 const UI_INPUT_TEXT = 1;
@@ -162,7 +162,7 @@ class BareaApp
 
     #appElement; 
     #bareaId=0;
-    #internalSysemCounter = 0;
+    #internalSystemCounter = 0;
     #appDataProxy; 
     #appDataProxyMap = new WeakMap(); //Cache proxied objects
     #appData;
@@ -489,7 +489,7 @@ class BareaApp
     }
 
     /***UI TRACKING ***/
-    #detectElements(tag=this.#appElement, templateid=-1)
+    #detectElements(tag=this.#appElement, templateid=-1, templatedata, templatekey)
     {
         //Delete dynamic functions that was created along with the templates
         dependencyTracker.deleteDynamicTemplateFunctions();
@@ -517,44 +517,288 @@ class BareaApp
                 .filter(attr => attr.name.startsWith("ba-"))
                 .map(attr => ({ name: attr.name, value: attr.value }));
 
-                if (!attr.value)
+                 //Skip all children of templates since they will be dealt with later on template rendering
+                if (templateChildren.includes(el))
                     return;
 
-                this.#internalSysemCounter++;
-        
-                if (DIR_GROUP_VISUAL_UPDATE.includes(attr.name))
+                bareaAttributes.forEach(attr =>
                 {
-                    const attribute_value_type = this.#getExpressionType(attr.value, attr.name);
-                    if (attribute_value_type==='INVALID')
-                    {
-                        console.error(`The ${attr.name} directive has an invalid (${attr.value}).`);
+
+                    if (!attr.value)
                         return;
-                    }
 
-                    let tracking_obj = this.#createUiBindingTrackingObject(templateid,el,attr.name,attr.value,null,"");
-
-                    if (attribute_value_type==EXPR_TYPE_ROOT_PATH)
+                    this.#internalSystemCounter++;
+            
+                    if (DIR_GROUP_VISUAL_UPDATE.includes(attr.name))
                     {
-                          let objpath = getLastBareaObjectName(attr.value);
-                          tracking_obj.data=this.getProxifiedPathData(objpath);
-                          tracking_obj.key=getLastBareaKeyName(attr.value);
-                    }
+                        const attribute_value_type = this.#getExpressionType(attr.value, attr.name);
+                        if (attribute_value_type==='INVALID')
+                        {
+                            console.error(`The ${attr.name} directive has an invalid (${attr.value}).`);
+                            return;
+                        }
 
-                    let handlername = el.getAttribute(DIR_BIND_HANDLER);
-                    if (handlername)
+                        let inputtype = "";
+                        let systeminput = -1;
+                        if (tracking_obj.directive===DIR_BIND)
+                        {
+                            inputtype = el.getAttribute("type");
+                            if (!inputtype)
+                                console.warn(`could not detect inputtype on element where ${DIR_BIND} is used`);
+
+                            if (inputtype.toLocaleLowerCase()==="text")
+                                systeminput=1;
+                            if (inputtype.toLocaleLowerCase()==="checkbox")
+                                systeminput=2;
+                            if (inputtype.toLocaleLowerCase()==="radio")
+                                systeminput=3;
+                        }
+
+                        let tracking_obj = this.#createUiTrackingObject(templateid,el,attr.name,attr.value,null,"",systeminput);
+                
+                        if (!templatedata){
+                            let objpath = getLastBareaObjectName(attr.value);
+                            tracking_obj.data=this.getProxifiedPathData(objpath);
+                            tracking_obj.key=getLastBareaKeyName(attr.value);
+                        }else{
+                            tracking_obj.data=templatedata;
+                            tracking_obj.key=templatekey;
+                        }
+                    
+                        let handlername = el.getAttribute(DIR_BIND_HANDLER);
+                        if (handlername)
+                        {
+                            const check_handler = this.#getExpressionType(handlername, DIR_BIND_HANDLER);
+                            if (check_handler==='INVALID')
+                            {
+                                console.error(`The ${DIR_BIND_HANDLER} directive has an invalid value (${handlername}), should be funcname(), or funcname(args..).`);
+                                return;
+                            }
+
+                            tracking_obj.hashandler=true;
+                            tracking_obj.handlername=handlername;
+                            this.#trackUI(attr.value, tracking_obj);
+                            this.#runBindHandler(VERB_SET_DATA, tracking_obj, handlername,  tracking_obj.data, tracking_obj.key);
+                        }
+                        else
+                        {   
+                            this.#trackUI(attr.value, tracking_obj);
+                            if (tracking_obj.directive===DIR_BIND)
+                            {
+                                if (tracking_obj.inputtype === UI_INPUT_TEXT){
+                                    this.#setInputText(el, tracking_obj.data, tracking_obj.key);
+                                }
+                                else if (tracking_obj.inputtype === UI_INPUT_CHECKBOX){
+                                    this.#setInputCheckbox(el, tracking_obj.data, tracking_obj.key);
+                                }
+                                else if (tracking_obj.inputtype === UI_INPUT_RADIO){
+                                    this.#setInputRadio(el, tracking_obj.data, tracking_obj.key);
+                                }
+
+                                el.addEventListener("input", (event) => {
+
+                                    if (tracking_obj.hashandler)
+                                    {
+                                        this.#runBindHandler(VERB_SET_DATA, tracking_obj, tracking_obj.handlername, tracking_obj.data, tracking_obj.key);
+                                        return;
+                                    }
+                
+                                    const log = this.#getConsoleLog(3);
+                                    if (tracking_obj.inputtype === UI_INPUT_CHECKBOX){
+                                        if (log.active)
+                                            console.log(log.name, "type: " + el.type, "key: " + valuekey, "input value: " + el.checked);
+                
+                                        tracking_obj.data[tracking_obj.key] =  el.checked;
+                                    } 
+                                    else if (tracking_obj.inputtype === UI_INPUT_RADIO){
+                                        if (log.active)
+                                            console.log(log.name, "type: " + el.type, "key: " + valuekey, "input value: " + el.value);
+                
+                                        if (el.checked)
+                                            tracking_obj.data[tracking_obj.key] =  el.value;
+                
+                                    } 
+                                    else {
+                                        if (log.active)
+                                            console.log(log.name, "type: " + el.type, "key: " + valuekey, "input value: " + el.value);
+                
+                                        tracking_obj.data[tracking_obj.key] =  el.value;
+                
+                                    }
+                                });
+                            }
+                            else if (tracking_obj.directive===DIR_CLASS){
+                                let classnames = el.getAttribute('classNames');
+                                this.#setClass(el,tracking_obj.data,tracking_obj.key,classnames);
+                            }
+                            else if (tracking_obj.directive===DIR_HREF){
+                                this.#setHref(el,tracking_obj.data,tracking_obj.key);
+                            }
+                            else if (tracking_obj.directive===DIR_IMAGE_SRC){
+                                this.#setSrc(el,tracking_obj.data,tracking_obj.key);
+                            }
+                        }
+                            
+                    }
+                    else if (DIR_GROUP_TRACK_AND_FORGET.includes(attr.name))
                     {
-                        tracking_obj.hashandler=true;
-                        tracking_obj.handlername=handlername;
+
+                        const genMarkup = el.getAttribute(META_IS_GENERATED_MARKUP);
+                        const varname = el.getAttribute(META_ARRAY_VARNAME);
+                        const attribute_value_type = this.#getExpressionType(attr.value, attr.name, varname);
+                        if (attribute_value_type==='INVALID')
+                         {
+                            console.error(`Then ${attr.name} directive has an invalid value (${attr.value}).`);
+                            return;
+                        }
+    
+                        let condition = attr.value.trim();
+                        if (condition.includes('?'))
+                            condition = condition.split('?')[0];
+
+                     
+                    
+
+                          //SPECIAL: NO TRACKING, ONLY REGISTER HANDLER
+                        if (attribute_value_type === EXPR_TYPE_HANDLER)
+                        {
+                            el.addEventListener("click", (event) => {
+                  
+                                let eventdata = this.#appDataProxy;
+                                let bapath = item.element.getAttribute(META_PATH);
+                                if (!bapath)
+                                {
+                                    if (templatedata)
+                                         eventdata = templatedata;
+                                }
+                                else
+                                {
+                                    eventdata = this.getProxifiedPathData(bapath);
+                                }
+                                  
+                                let allparams = [event, item.element, eventdata];
+                                let pieces = parseBareaFunctionCall(condition);
+                                allparams.push(...pieces.params);
+                                if (this.#methods[pieces.functionName]) {
+                                       this.#methods[pieces.functionName].apply(this, allparams);
+                                } else {
+                                    console.warn(`Handler function '${pieces.functionName}' not found.`);
+                                }
+                            });
+                               
+                            return;
+                        }
+
+                        let handlername = "";
+                        if (genMarkup){
+                            handlername = `${META_DYN_TEMPLATE_FUNC_PREFIX}${this.#internalSystemCounter}`;
+                        }else{
+                            handlername = `${META_DYN_FUNC_PREFIX}${this.#internalSystemCounter}`;
+                        }
+
+                        const tracking_obj = this.#createUiTrackingObject(templateid,el,attr.name,condition,null,"",-1);
+                        if (!templatedata){
+                            let objpath = getLastBareaObjectName(attr.value);
+                            tracking_obj.data=this.getProxifiedPathData(objpath);
+                            tracking_obj.key=getLastBareaKeyName(attr.value);
+                        }else{
+                            tracking_obj.data=templatedata;
+                            tracking_obj.key=templatekey;
+                        }
+            
+                        if (attribute_value_type === EXPR_TYPE_COMPUTED){
+                            const tracking_obj = this.#createUiTrackingObject(templateid,el,attr.name,condition,null,"",-1);
+                            tracking_obj.handlername=handlername;
+                            this.#trackUI('runhandlers', tracking_obj);
+                        }
+                        else if (attribute_value_type === EXPR_TYPE_ROOT_EXPR){
+                    
+                            const evalobj = this.#appDataProxy;
+                            const boolRootFunc = function()
+                            {
+                                function  evalRootExpr(condition, context) {
+                                    try {
+                                        return new Function("contextdata", `return ${condition};`)(context);
+                                    } catch (error) {
+                                        console.error(`Error evaluating expression ${condition} on ${el.localName} with attribute ${attr.name}`);
+                                        return false;
+                                    }
+                                }
+                                
+                                condition=condition.replaceAll('root.','contextdata.');
+                                return evalRootExpr(condition, evalobj);
+                            }
+
+                            this.#enableComputedProperties=true;
+                            this.#computedProperties[handlername] = new BareaComputedProperty(boolRootFunc,handlername, this);
+                            this.#computedKeys.push(handlername);
+                            tracking_obj.handlername=handlername;
+                            this.#trackUI('runhandlers', tracking_obj);
+
+                        }
+                        else if (attribute_value_type === EXPR_TYPE_OBJREF_EXPR)
+                        {
+                        
+                            const boolObjFunc = function()
+                            {
+                                function  evalObjExpr(condition, context) {
+                                    try {
+                                        return new Function("contextdata", `return ${condition};`)(context);
+                                    } catch (error) {
+                                        console.error(`Error evaluating expression ${condition} on ${el.localName} with attribute ${attr.name}`);
+                                        return false;
+                                    }
+                                }
+                                
+                                condition=condition.replaceAll(varname+'.','contextdata.');
+                                return evalObjExpr(condition, tracking_obj.data);
+                            }
+
+                            this.#enableComputedProperties=true;
+                            this.#computedProperties[handlername] = new BareaComputedProperty(boolObjFunc,handlername, this);
+                            this.#computedKeys.push(handlername);
+                            tracking_obj.handlername=handlername;
+                            this.#trackUI('runhandlers', tracking_obj);
+
+                        }  
+                        else if (attribute_value_type === EXPR_TYPE_MIX_EXPR)
+                        {
+                        
+                            const subobj = tracking_obj.data;
+                            const rootobj = this.#appDataProxy;
+                          
+                            const boolMixedFunc = function()
+                            {
+                                function  evalMixedExpr(condition, subdata, rootdata) {
+                                    try {
+                                        return new Function("subdata","rootdata", `return ${condition};`)(subdata,rootdata);
+                                    } catch (error) {
+                                        console.error(`Error evaluating mixed expression ${condition} on ${el.localName} with attribute ${attr.name}`);
+                                        return false;
+                                    }
+                                }
+                                
+                                condition=condition.replaceAll('root.','rootdata.');
+                                condition=condition.replaceAll(varname+'.','subdata.');
+                                return evalMixedExpr(condition, subobj,rootobj);
+                            }
+
+                            this.#enableComputedProperties=true;
+                            this.#computedProperties[handlername] = new BareaComputedProperty(boolMixedFunc,handlername, this);
+                            this.#computedKeys.push(handlername);
+                            tracking_obj.handlername=handlername;
+                            this.#trackUI('runhandlers', tracking_obj);
+                        
+                        }
+                        
                     }
+                  
 
-                   this.#trackUI(attr.value, tracking_obj);
-                        
-                }
-
-                        
+                });                 
 
         });
 
+        //Interpolation is detected in text nodes {{interplation}}
         if (this.#enableInterpolation)
         {
             function traverseNodes(node) {
@@ -562,9 +806,12 @@ class BareaApp
                 {
                     if (node.nodeValue.includes("{{") && node.nodeValue.includes("}}"))
                     {
+                        let content = node.nodeValue;
                         let paths = this.#getInterpolationPaths(node.nodeValue);
+                        let count=0;
                         paths.forEach(t=>{
 
+                            let exprvalue="";
                             const attribute_value_type = this.#getExpressionType(t,DIR_INTERPOLATION);
                             if (attribute_value_type==='INVALID')
                             {
@@ -572,16 +819,46 @@ class BareaApp
                                 return;
                             }
 
-                            let tracking_obj = this.#createUiInterpolationTrackingObject(templateId,DIR_INTERPOLATION,t,null,"",node);
-                            if (attribute_value_type==EXPR_TYPE_ROOT_PATH)
+                            let tracking_obj = this.#createUiInterpolationTrackingObject(templateid,DIR_INTERPOLATION,t,null,"",node);
+                            
+                            if (attribute_value_type===EXPR_TYPE_COMPUTED){
+                                exprvalue=this.#computedProperties[t].value;
+                            }else if (attribute_value_type===EXPR_TYPE_ROOT_PATH || attribute_value_type===EXPR_TYPE_OBJREF || attribute_value_type===EXPR_TYPE_OBJREF_PATH)
                             {
-                                let objpath = getLastBareaObjectName(attr.value);
+                                let objpath = getLastBareaObjectName(t);
                                 tracking_obj.data=this.getProxifiedPathData(objpath);
-                                tracking_obj.key=getLastBareaKeyName(attr.value);
+                                let interpolation_key = getLastBareaKeyName(t);
+                                if (interpolation_key!=='root'){
+                                    tracking_obj.key=interpolation_key;
+                                    exprvalue = tracking_obj.data[interpolation_key];
+                                }
+                                else
+                                {
+                                    exprvalue = tracking_obj.data;
+                                }     
+                               
                             }
+                            else if (expr === INTERPOL_INDEX)
+                            {
+                                exprvalue = this.#getClosestAttribute(el, META_ARRAY_INDEX);
+                            }
+            
+                            if (!exprvalue)
+                                exprvalue ="";
+            
+                            if (typeof exprvalue === "object") 
+                                exprvalue = JSON.stringify(exprvalue)
+                          
+                            count++;
+                            const regex = new RegExp(`{{\\s*${expr.replace(/[.[\]]/g, '\\$&')}\\s*}}`, 'g');
+                            content = content.replace(regex, exprvalue);        
+                            
 
-                            this.#trackUI(attr.value, tracking_obj);
+                            this.#trackUI(t, tracking_obj);
                         })
+
+                        if (count>0)
+                            t.textContent = content;
                        
                     }
                 }
@@ -594,7 +871,6 @@ class BareaApp
             
             traverseNodes(tag);
 
-        
         }
 
         let log = this.#getConsoleLog(4);
@@ -608,20 +884,20 @@ class BareaApp
         
     }
 
-    #createUiBindingTrackingObject(templateid, element, directive, directivevalue, data, key)
+    #createUiTrackingObject(templateid, element, directive, directivevalue, data, key, inputtype)
     {
         let id = this.#domDictionaryId++;
-        return {id: id, isnew:true, templateid: templateid, directive:directive,  directivevalue:directivevalue, element: element, data:data, key:key, hashandler:false, handlername:""  };
+        return {id: id, isnew:true, templateid: templateid, directive:directive,  directivevalue:directivevalue, element: element, data:data, key:key, hashandler:false, handlername:"", inputtype:inputtype };
     }
     #createUiTemplateTrackingObject(templateid, element, directive, directivevalue, data, key,  parentelement, templatemarkup, templatetagname)
     {
         let id = this.#domDictionaryId++;
-        return {id: id, isnew:true, templateid: templateid, directive:directive,  directivevalue:directivevalue, element: element, data:data, key:key, parentelement : parentelement, templatemarkup : templatemarkup, templatetagname : templatetagname };
+        return {id: id, isnew:true, templateid: templateid, directive:directive,  directivevalue:directivevalue, element: element, data:data, key:key, hashandler:false, handlername:"", inputtype:-1, parentelement : parentelement, templatemarkup : templatemarkup, templatetagname : templatetagname };
     }
     #createUiInterpolationTrackingObject(templateid, directive, directivevalue, data, key,interpolated_node)
     {
         let id = this.#domDictionaryId++;
-        return {id: id, isnew:true, templateid: templateid, directive:directive,  directivevalue:directivevalue, element: null, data:data, key:key, interpolated_node: interpolated_node  };
+        return {id: id, isnew:true, templateid: templateid, directive:directive,  directivevalue:directivevalue, element: null, data:data, key:key, hashandler:false, handlername:"", inputtype:-1, interpolated_node: interpolated_node  };
     }
 
     #trackUI(path, ui) 
@@ -674,13 +950,13 @@ class BareaApp
         });
     }
 
-    #runBindHandler(ui, handlername, data, key)
+    #runBindHandler(verb, ui, handlername, data, key)
     {
 
         if (!ui.handlerpieces)
             ui.handlerpieces = parseBareaFunctionCall(handlername);
 
-        let allparams = [VERB_SET_UI, element, data[key], data];
+        let allparams = [verb, element, data[key], data];
         allparams.push(...ui.handlerpieces.params);
 
         if (this.#methods[ui.handlerpieces.functionName]) {
