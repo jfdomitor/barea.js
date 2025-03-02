@@ -33,6 +33,7 @@ const DIR_GROUP_MARKUP_GENERATION = [DIR_FOREACH]
 const UI_INPUT_TEXT = 1;
 const UI_INPUT_CHECKBOX = 2;
 const UI_INPUT_RADIO = 3;
+const UI_INPUT_CUSTOM = 4;
 
 
 //Verbs
@@ -160,8 +161,6 @@ class BareaApp
     #appData;
     #methods = {};
     #consoleLogs = [];
-    #domDictionary = []; //Reference dom from paths
-    #domDictionaryId=0;
     #mounted=false;
     #mountedHandler=null;
     #computedProperties = {};
@@ -266,7 +265,6 @@ class BareaApp
         const proxy = this.#createReactiveProxy((path, value, key, target) => 
         { 
             //Handles changes in the data and updates the dom
-
             let log = this.#getConsoleLog(1);
             if (log.active)
                 console.log(log.name, path, value, key, target);
@@ -540,6 +538,7 @@ class BareaApp
                         return;
 
                     this.#internalSystemCounter++;
+
             
                     if (DIR_GROUP_BOUND_TO_PATHS.includes(attr.name))
                     {
@@ -556,7 +555,7 @@ class BareaApp
                         {
                             inputtype = el.getAttribute("type");
                             if (!inputtype){
-                                systeminput=1;
+                                systeminput=4;
                                 //console.warn(`could not detect inputtype on element where ${DIR_BIND} is used`);
                             }else{
 
@@ -592,14 +591,20 @@ class BareaApp
 
                             tracking_obj.hashandler=true;
                             tracking_obj.handlername=handlername;
-                            this.#trackUI(attr.value, tracking_obj);
-                            this.#runBindHandler(VERB_SET_DATA, tracking_obj);
+                        
                         }
-                        else
-                        {   
-                            this.#trackUI(attr.value, tracking_obj);
+                        
+                        
+                        this.#trackUI(attr.value, tracking_obj);
+
                             if (tracking_obj.directive===DIR_BIND)
                             {
+
+                                if (tracking_obj.hashandler)
+                                {
+                                    this.#runBindHandler(VERB_SET_UI, tracking_obj);
+                                }
+                               
                                 if (tracking_obj.inputtype === UI_INPUT_TEXT){
                                     this.#setInputText(tracking_obj);
                                 }
@@ -612,7 +617,12 @@ class BareaApp
 
                                 el.addEventListener("input", (event) => {
 
-                
+                                    if (tracking_obj.hashandler)
+                                    {
+                                            this.#runBindHandler(VERB_SET_DATA, tracking_obj);
+                                            return;
+                                    }
+
                                     const log = this.#getConsoleLog(3);
                                     if (tracking_obj.inputtype === UI_INPUT_CHECKBOX){
                                         if (log.active)
@@ -635,7 +645,9 @@ class BareaApp
                                         tracking_obj.data[tracking_obj.key] =  el.value;
                 
                                     }
-                                });
+                                });   
+                                   
+                                
                             }
                             else if (tracking_obj.directive===DIR_CLASS){
                                 let classnames = el.getAttribute('classNames');
@@ -648,7 +660,7 @@ class BareaApp
                             else if (tracking_obj.directive===DIR_IMAGE_SRC){
                                 this.#setSrc(tracking_obj);
                             }
-                        }
+                          
                             
                     }
                     else if (DIR_GROUP_COMPUTED.includes(attr.name))
@@ -957,17 +969,17 @@ class BareaApp
 
     #createUiTrackingObject(templateid, element, directive, directivevalue, data, key, inputtype)
     {
-        let id = this.#domDictionaryId++;
+        let id = this.#internalSystemCounter++;
         return {id: id, isnew:true, templateid: templateid, directive:directive,  directivevalue:directivevalue, element: element, data:data, key:key, hashandler:false, handlername:"", inputtype:inputtype };
     }
     #createUiTemplateTrackingObject(templateid, element, directive, directivevalue, data, key,  parentelement, templatemarkup, templatetagname)
     {
-        let id = this.#domDictionaryId++;
+        let id = this.#internalSystemCounter++;
         return {id: id, isnew:true, templateid: templateid, directive:directive,  directivevalue:directivevalue, element: element, data:data, key:key, hashandler:false, handlername:"", inputtype:-1, parentelement : parentelement, templatemarkup : templatemarkup, templatetagname : templatetagname };
     }
     #createUiInterpolationTrackingObject(templateid, directive, directivevalue, data, key,interpolatednode, expression, nodetemplate)
     {
-        let id = this.#domDictionaryId++;
+        let id = this.#internalSystemCounter++;
         return {id: id, isnew:true, templateid: templateid, directive:directive,  directivevalue:directivevalue, element: null, data:data, key:key, hashandler:false, handlername:"", inputtype:-1, interpolatednode: interpolatednode, expression: expression, nodetemplate:nodetemplate  };
     }
 
@@ -1099,7 +1111,13 @@ class BareaApp
         if (!ui.handlerpieces)
             ui.handlerpieces = parseBareaFunctionCall(ui.handlername);
 
-        let allparams = [verb, ui.element, ui.data, ui.key];
+        let allparams = [];
+        if (verb === VERB_SET_UI)
+            allparams = [verb, ui.element, ui.data[ui.key]];
+
+        if (verb === VERB_SET_DATA)
+            allparams = [verb, ui.element, ui.data, ui.key];
+
         allparams.push(...ui.handlerpieces.params);
 
         if (this.#methods[ui.handlerpieces.functionName]) {
