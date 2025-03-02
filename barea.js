@@ -279,7 +279,7 @@ class BareaApp
             if (log.active)
                 console.log(log.name, path, value, key, target);
 
-            this.#notifyUI(path);
+            this.#notifyUI(path, value);
             //this.#setupBindings();
             //this.#applyProxyChangeInterpolation(path, value);
             //this.#applyProxyChangeToDOM(path, value, key, target);
@@ -543,15 +543,18 @@ class BareaApp
                         if (attr.name===DIR_BIND)
                         {
                             inputtype = el.getAttribute("type");
-                            if (!inputtype)
-                                console.warn(`could not detect inputtype on element where ${DIR_BIND} is used`);
-
-                            if (inputtype.toLocaleLowerCase()==="text")
+                            if (!inputtype){
                                 systeminput=1;
-                            if (inputtype.toLocaleLowerCase()==="checkbox")
-                                systeminput=2;
-                            if (inputtype.toLocaleLowerCase()==="radio")
-                                systeminput=3;
+                                //console.warn(`could not detect inputtype on element where ${DIR_BIND} is used`);
+                            }else{
+
+                                if (inputtype.toLowerCase()==="text")
+                                    systeminput=1;
+                                if (inputtype.toLowerCase()==="checkbox")
+                                    systeminput=2;
+                                if (inputtype.toLowerCase()==="radio")
+                                    systeminput=3;
+                            }
                         }
 
                         let tracking_obj = this.#createUiTrackingObject(templateid,el,attr.name,attr.value,null,"",systeminput);
@@ -821,12 +824,8 @@ class BareaApp
                             .replace(/(\S)\s{2,}(\S)/g, '$1 $2'); // Reduce multiple spaces to one inside text nodes
         
                         const tracking_obj = this.#createUiTemplateTrackingObject(templateid,el,attr.name,attr.value,null,"", el.parentElement,templateHtml, el.localName);
-                        if (attribute_value_type===EXPR_TYPE_COMPUTED){ 
-                            this.#trackUI('global', tracking_obj);
-                        }
-                        else{
-                            this.#trackUI(datapath, tracking_obj);
-                        }
+                        this.#trackUI('global', tracking_obj);
+                       
                         el.remove();
 
                         this.#renderTemplates(tracking_obj);
@@ -864,8 +863,12 @@ class BareaApp
                                 exprvalue=instance.#computedProperties[t].value;
                             }else if (attribute_value_type===EXPR_TYPE_ROOT_PATH || attribute_value_type===EXPR_TYPE_OBJREF || attribute_value_type===EXPR_TYPE_OBJREF_PATH)
                             {
-                                let objpath = getLastBareaObjectName(t);
-                                tracking_obj.data=instance.getProxifiedPathData(objpath);
+                                if (!templatedata){
+                                    let objpath = getLastBareaObjectName(t);
+                                    tracking_obj.data=instance.getProxifiedPathData(objpath);
+                                }else{
+                                    tracking_obj.data = templatedata;
+                                }
                                 let interpolation_key = getLastBareaKeyName(t);
                                 if (interpolation_key!=='root'){
                                     tracking_obj.key=interpolation_key;
@@ -877,9 +880,9 @@ class BareaApp
                                 }     
                                
                             }
-                            else if (expr === INTERPOL_INDEX)
+                            else if (attribute_value_type === INTERPOL_INDEX)
                             {
-                                exprvalue = instance.#getClosestAttribute(el, META_ARRAY_INDEX);
+                                exprvalue = instance.#getClosestAttribute(node.parentElement, META_ARRAY_INDEX);
                             }
             
                             if (!exprvalue)
@@ -948,7 +951,7 @@ class BareaApp
         this.#uiDependencies.get(path).add(ui);
     }
     
-    #notifyUI(path) 
+    #notifyUI(path, changedvalue) 
     {
         if (!this.#uiDependencies.has(path)) 
             return;
@@ -992,7 +995,7 @@ class BareaApp
             {
                if (DIR_GROUP_MARKUP_GENERATION.includes(ui.directive)){
 
-                    this.#renderTemplates(ui, path);  
+                    this.#renderTemplates(ui, path, changedvalue);  
                }
 
                if (DIR_GROUP_TRACK_AND_FORGET.includes(ui.directive)){
@@ -1068,7 +1071,7 @@ class BareaApp
         if (!ui.handlerpieces)
             ui.handlerpieces = parseBareaFunctionCall(handlername);
 
-        let allparams = [verb, element, data[key], data];
+        let allparams = [verb, ui.element, data];
         allparams.push(...ui.handlerpieces.params);
 
         if (this.#methods[ui.handlerpieces.functionName]) {
@@ -1567,7 +1570,7 @@ class BareaApp
      * @param {string} key - The key in the parent affected object.
      * @param {any} target - The parent object of what's changed.
      */
-    #renderTemplates(ui, path='root') 
+    #renderTemplates(ui, path='root', changedvalue) 
     {
 
         let foreacharray = [];
@@ -1595,13 +1598,13 @@ class BareaApp
                 //This template is based on a computed array
                 //If the incoming path is not a dependency of the computed property, then return
                 let principalpath = getPrincipalBareaPath(path);
-                if (!dependencyTracker.isDepencencyPath(principalpath, datapath))
+                if (!dependencyTracker.isDepencencyPath(principalpath, datapath) && path !== ROOT_OBJECT)
                     return;
             }
             else
             {
                   //Important: Only render on array operations like pop, push, unshift etc if bound directly with data path
-                if (!(Array.isArray(value) || (this.#isPrimitive(value) && ARRAY_FUNCTIONS.includes(value))))
+                if (!(Array.isArray(changedvalue) || (this.#isPrimitive(changedvalue) && ARRAY_FUNCTIONS.includes(changedvalue))))
                     return;
                      
                 foreacharray = this.getProxifiedPathData(datapath); 
@@ -1614,7 +1617,8 @@ class BareaApp
                
 
            let counter=0;
-            this.#removeTemplateChildrenFromDomDictionary(template.id);
+           //TODO: CLEAR OLD UI DEPENDENCIES 
+           //this.#removeTemplateChildrenFromDomDictionary(template.id);
             ui.parentelement.innerHTML = ""; // Clear list
           
             const fragment = document.createDocumentFragment();
@@ -1630,7 +1634,7 @@ class BareaApp
                 if (newtag.id)
                     newtag.id = newtag.id + `-${counter}` 
                 else
-                    newtag.id = `${template.id}-${varname}-${counter}`; 
+                    newtag.id = `${ui.id}-${varname}-${counter}`; 
 
                 fragment.appendChild(newtag);
             
