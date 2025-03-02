@@ -576,7 +576,7 @@ class BareaApp
                             tracking_obj.hashandler=true;
                             tracking_obj.handlername=handlername;
                             this.#trackUI(attr.value, tracking_obj);
-                            this.#runBindHandler(VERB_SET_DATA, tracking_obj, handlername,  tracking_obj.data, tracking_obj.key);
+                            this.#runBindHandler(VERB_SET_DATA, tracking_obj);
                         }
                         else
                         {   
@@ -584,22 +584,17 @@ class BareaApp
                             if (tracking_obj.directive===DIR_BIND)
                             {
                                 if (tracking_obj.inputtype === UI_INPUT_TEXT){
-                                    this.#setInputText(el, tracking_obj.data, tracking_obj.key);
+                                    this.#setInputText(tracking_obj);
                                 }
                                 else if (tracking_obj.inputtype === UI_INPUT_CHECKBOX){
-                                    this.#setInputCheckbox(el, tracking_obj.data, tracking_obj.key);
+                                    this.#setInputCheckbox(tracking_obj);
                                 }
                                 else if (tracking_obj.inputtype === UI_INPUT_RADIO){
-                                    this.#setInputRadio(el, tracking_obj.data, tracking_obj.key);
+                                    this.#setInputRadio(tracking_obj);
                                 }
 
                                 el.addEventListener("input", (event) => {
 
-                                    if (tracking_obj.hashandler)
-                                    {
-                                        this.#runBindHandler(VERB_SET_DATA, tracking_obj, tracking_obj.handlername, tracking_obj.data, tracking_obj.key);
-                                        return;
-                                    }
                 
                                     const log = this.#getConsoleLog(3);
                                     if (tracking_obj.inputtype === UI_INPUT_CHECKBOX){
@@ -627,13 +622,13 @@ class BareaApp
                             }
                             else if (tracking_obj.directive===DIR_CLASS){
                                 let classnames = el.getAttribute('classNames');
-                                this.#setClass(el,tracking_obj.data,tracking_obj.key,classnames);
+                                this.#setClass(tracking_obj);
                             }
                             else if (tracking_obj.directive===DIR_HREF){
-                                this.#setHref(el,tracking_obj.data,tracking_obj.key);
+                                this.#setHref(tracking_obj);
                             }
                             else if (tracking_obj.directive===DIR_IMAGE_SRC){
-                                this.#setSrc(el,tracking_obj.data,tracking_obj.key);
+                                this.#setSrc(tracking_obj);
                             }
                         }
                             
@@ -945,30 +940,33 @@ class BareaApp
            if (DIR_GROUP_BOUND_TO_PATHS.includes(ui.directive)){
 
                 if (ui.hashandler){
-                    this.#runBindHandler(VERB_SET_UI, ui, ui.handlername, ui.data, ui.key);
+                    this.#runBindHandler(VERB_SET_UI, ui);
                     return;
                 }
 
                 if (ui.directive===DIR_BIND)
                 {
                     if (ui.inputType === UI_INPUT_TEXT){
-                        this.#setInputText(ui.element, ui.data, ui.key);
+                        this.#setInputText(ui);
                     }
                     else if (ui.inputType === UI_INPUT_CHECKBOX){
-                        this.#setInputCheckbox(ui.element, ui.data, ui.key);
+                        this.#setInputCheckbox(ui);
                     }
                     else if (ui.inputType === UI_INPUT_RADIO){
-                        this.#setInputRadio(ui.element, ui.data, ui.key);
+                        this.#setInputRadio(ui);
                     }
                 }
                 else if (ui.directive===DIR_CLASS){
-                    this.#setClass(ui.element,ui.data,ui.key,ui.orgvalue);
+                    this.#setClass(ui);
                 }
                 else if (ui.directive===DIR_HREF){
-                    this.#setHref(ui.element,ui.data,ui.key);
+                    this.#setHref(ui);
                 }
                 else if (ui.directive===DIR_IMAGE_SRC){
-                    this.#setSrc(ui.element,ui.data,ui.key);
+                    this.#setSrc(ui);
+                }
+                else if (ui.directive===DIR_INTERPOLATION){
+                    this.#setInterpolation(ui);
                 }
                 
            }
@@ -997,7 +995,7 @@ class BareaApp
                 let principalpath = getPrincipalBareaPath(path);
                 if (!dependencyTracker.isDepencencyPath(principalpath, ui.directivevalue) && path !== ROOT_OBJECT)
                     return;
-                
+
                 this.#setInterpolation(ui);
             }
                
@@ -1035,13 +1033,13 @@ class BareaApp
               
     }
 
-    #runBindHandler(verb, ui, handlername, data, key)
+    #runBindHandler(verb, ui)
     {
 
         if (!ui.handlerpieces)
-            ui.handlerpieces = parseBareaFunctionCall(handlername);
+            ui.handlerpieces = parseBareaFunctionCall(ui.handlername);
 
-        let allparams = [verb, ui.element, data, key];
+        let allparams = [verb, ui.element, ui.data, ui.key];
         allparams.push(...ui.handlerpieces.params);
 
         if (this.#methods[ui.handlerpieces.functionName]) {
@@ -1091,57 +1089,58 @@ class BareaApp
         }
     }
 
-    #setInputText(element, data, key) {
-        if (element && element.value !== data[key]) 
+    #setInputText(ui) {
+        if (ui.element && ui.element.value !== ui.data[ui.key]) 
         {
-            element.value = data[key];
+            ui.element.value = ui.data[ui.key];
         }
     }
 
-    #setInputCheckbox(element, data, key) 
+    #setInputCheckbox(ui) 
     {
-        if (element && element.checked !== data[key]) 
+        if (ui.element && ui.element.checked !== ui.data[ui.key]) 
         {
-            element.checked = data[key];
+            ui.element.checked = ui.data[ui.key];
         }
     }
 
-    #setInputRadio(element, data, key) {
-        if (element && element.type === 'radio' && data[key] !== undefined && element.checked !== (element.value === data[key])) 
-        {
-            element.checked = element.value === data[key];
-        }
-    }
-
-    #setClass(element, data, key, orgvalue) 
+    #setInputRadio(ui)
     {
-        if (!data[key])
+        if (ui.element && ui.element.type === 'radio' && ui.data[ui.key] !== undefined && ui.element.checked !== (ui.element.value === ui.data[ui.key])) 
+        {
+            ui.element.checked = ui.element.value === ui.data[ui.key];
+        }
+    }
+
+    #setClass(ui) 
+    {
+        if (!ui.data[ui.key])
             return;
 
-        if (!orgvalue)
-            orgvalue="";
+        if (!ui.orgvalue)
+            ui.orgvalue="";
      
-        let classes = data[key];
+        let classes = ui.data[ui.key];
         if (classes.includes(','))
             classes = classes.replaceAll(',', ' ');
     
-        element.className = classes || orgvalue;
+        ui.element.className = classes || ui.orgvalue;
     }
 
-    #setSrc(element, data, key) 
+    #setSrc(ui) 
     {
-        if (!data[key])
+        if (!ui.data[ui.key])
             return;
     
-        element.src = data[key];
+        ui.element.src = ui.data[ui.key];
     }
 
-    #setHref(element, data, key) 
+    #setHref(ui) 
     {
-        if (!data[key])
+        if (!ui.data[ui.key])
             return;
 
-        element.href = data[key];
+        ui.element.href = ui.data[ui.key];
     }
     #setInterpolation(ui)
     {
@@ -1179,7 +1178,7 @@ class BareaApp
    
         //const regex = new RegExp(`{{\\s*${ui.directivavalue.replace(/[.[\]]/g, '\\$&')}\\s*}}`, 'g');
         //content = content.replace(regex, exprvalue);      
-        let content = ui.interpolatednode.textContent;
+        let content = ui.expression;
         content = content.replaceAll(ui.expression, interpol_value);
         ui.interpolatednode.textContent = content;
         
