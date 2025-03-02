@@ -35,18 +35,9 @@ const UI_INPUT_CHECKBOX = 2;
 const UI_INPUT_RADIO = 3;
 
 
-//Directive types
-const DIR_TYPE_BINDING = 'binding';
-const DIR_TYPE_HANDLER = 'uihandler';
-const DIR_TYPE_UI_SETTER = 'uisetter';
-const DIR_TYPE_COMPUTED = 'computed';
-const DIR_TYPE_BOOLEXPR = 'computedexpression';
-const DIR_TYPE_TEMPLATE = 'template';
-
-
 //Verbs
-VERB_SET_DATA = 'SET_DATA';
-VERB_SET_UI = 'SET_UI';
+const VERB_SET_DATA = 'SET_DATA';
+const VERB_SET_UI = 'SET_UI';
 
 
 //Dom meta data
@@ -377,6 +368,32 @@ class BareaApp
         return target;
     }
 
+    //Generates a flat object from any object
+    getObjectDictionary(obj, parentKey = '') {
+        let result = {};
+        for (const key in obj) {
+            if (obj.hasOwnProperty(key)) {
+                const newKey = parentKey ? `${parentKey}.${key}` : key;
+                if (typeof obj[key] === 'object' && obj[key] !== null) {
+                    if (Array.isArray(obj[key])) {
+                        result[newKey] = obj[key]; 
+                        obj[key].forEach((item, index) => {
+                            result[`${newKey}[${index}]`] = item; 
+                            Object.assign(result, this.getObjectDictionary(item, `${newKey}[${index}]`));
+                        });
+                    } else {
+                        result[newKey] = obj[key]; 
+                        Object.assign(result, this.getObjectDictionary(obj[key], newKey));
+                    }
+                } else {
+                    result[newKey] = obj[key];  
+                }
+            }
+        }
+    
+        return result;
+    }
+
    
     #createReactiveProxy(callback, data, currentpath = "root") 
     {
@@ -622,6 +639,7 @@ class BareaApp
                             }
                             else if (tracking_obj.directive===DIR_CLASS){
                                 let classnames = el.getAttribute('classNames');
+                                tracking_obj.orgvalue=classnames;
                                 this.#setClass(tracking_obj);
                             }
                             else if (tracking_obj.directive===DIR_HREF){
@@ -667,13 +685,14 @@ class BareaApp
 
                         if (attr.name === DIR_IF){
                             tracking_obj.elementnextsibling=el.nextSibling;
+                            tracking_obj.parentelement=el.parentElement;
                         }
             
                         if (attribute_value_type === EXPR_TYPE_COMPUTED)
                         {
                             tracking_obj.handlername=condition;
                             this.#trackUI('global', tracking_obj);
-                            this.#runComputedFunctions(tracking_obj);
+                            this.#runComputedFunction(tracking_obj);
                         }
                         else if (attribute_value_type === EXPR_TYPE_ROOT_EXPR){
                     
@@ -698,7 +717,7 @@ class BareaApp
                             this.#computedKeys.push(handlername);
                             tracking_obj.handlername=handlername;
                             this.#trackUI('global', tracking_obj);
-                            this.#runComputedFunctions(tracking_obj);
+                            this.#runComputedFunction(tracking_obj);
 
                         }
                         else if (attribute_value_type === EXPR_TYPE_OBJREF_EXPR)
@@ -724,7 +743,7 @@ class BareaApp
                             this.#computedKeys.push(handlername);
                             tracking_obj.handlername=handlername;
                             this.#trackUI('global', tracking_obj);
-                            this.#runComputedFunctions(tracking_obj);
+                            this.#runComputedFunction(tracking_obj);
 
                         }  
                         else if (attribute_value_type === EXPR_TYPE_MIX_EXPR)
@@ -754,7 +773,7 @@ class BareaApp
                             this.#computedKeys.push(handlername);
                             tracking_obj.handlername=handlername;
                             this.#trackUI('global', tracking_obj);
-                            this.#runComputedFunctions(tracking_obj);
+                            this.#runComputedFunction(tracking_obj);
                         
                         }
                         
@@ -844,6 +863,7 @@ class BareaApp
                 {
                     if (node.nodeValue.includes("{{") && node.nodeValue.includes("}}"))
                     {
+                        let nodeexpressions=[];
                         let expressions = instance.#extractInterpolations(node.nodeValue);
                         expressions.forEach(expr=>{
 
@@ -855,11 +875,12 @@ class BareaApp
                                 return;
                             }
 
-                            let tracking_obj = instance.#createUiInterpolationTrackingObject(templateid,DIR_INTERPOLATION,path,null,"",node, expr);
+                            let tracking_obj = instance.#createUiInterpolationTrackingObject(templateid,DIR_INTERPOLATION,path,null,"",node, expr, node.nodeValue);
                             if (attribute_value_type===EXPR_TYPE_COMPUTED){
-                                instance.#trackUI('global', tracking_obj);
-                                instance.#setInterpolation(tracking_obj);
-                            }else if (attribute_value_type===EXPR_TYPE_ROOT_PATH || attribute_value_type===EXPR_TYPE_OBJREF || attribute_value_type===EXPR_TYPE_OBJREF_PATH)
+                                tracking_obj.iscomputed = true;
+                                nodeexpressions.push(tracking_obj);
+                            }
+                            else if ([EXPR_TYPE_ROOT_PATH,EXPR_TYPE_OBJREF,EXPR_TYPE_OBJREF_PATH,INTERPOL_INDEX].includes(attribute_value_type))
                             {
                                 //Find data
                                 if (!templatedata){
@@ -875,11 +896,40 @@ class BareaApp
                                 if (interpolation_key!=='root'){
                                     tracking_obj.key=interpolation_key;
                                 }
-                                instance.#trackUI(path, tracking_obj);
-                                instance.#setInterpolation(tracking_obj);
+
+                                tracking_obj.iscomputed = false;
+                                nodeexpressions.push(tracking_obj);
+                          
                             }
                             
-                        });    
+                        });  
+                        
+                        if (nodeexpressions.length>0)
+                        {
+                            //Important track per node, not per expression, must render per node
+                            let tracking_obj = nodeexpressions[0];
+                            tracking_obj.nodeexpressions = nodeexpressions;
+                            if (nodeexpressions.length===1)
+                            {
+                                if (tracking_obj.iscomputed)
+                                {
+                                    instance.#trackUI('global', tracking_obj);
+                                }
+                                else
+                                {
+                                    instance.#trackUI(tracking_obj.directivevalue, tracking_obj);
+                                }
+                                instance.#setInterpolation(tracking_obj);
+
+                            }
+                            else
+                            {
+                                instance.#trackUI('global', tracking_obj);
+                                instance.#setInterpolation(tracking_obj);
+                            }
+                        }
+                       
+                       
                        
                     }
                 }
@@ -915,10 +965,10 @@ class BareaApp
         let id = this.#domDictionaryId++;
         return {id: id, isnew:true, templateid: templateid, directive:directive,  directivevalue:directivevalue, element: element, data:data, key:key, hashandler:false, handlername:"", inputtype:-1, parentelement : parentelement, templatemarkup : templatemarkup, templatetagname : templatetagname };
     }
-    #createUiInterpolationTrackingObject(templateid, directive, directivevalue, data, key,interpolatednode, expression)
+    #createUiInterpolationTrackingObject(templateid, directive, directivevalue, data, key,interpolatednode, expression, nodetemplate)
     {
         let id = this.#domDictionaryId++;
-        return {id: id, isnew:true, templateid: templateid, directive:directive,  directivevalue:directivevalue, element: null, data:data, key:key, hashandler:false, handlername:"", inputtype:-1, interpolatednode: interpolatednode, expression: expression  };
+        return {id: id, isnew:true, templateid: templateid, directive:directive,  directivevalue:directivevalue, element: null, data:data, key:key, hashandler:false, handlername:"", inputtype:-1, interpolatednode: interpolatednode, expression: expression, nodetemplate:nodetemplate  };
     }
 
     #trackUI(path, ui) 
@@ -932,77 +982,87 @@ class BareaApp
     
     #notifyUI(path, changedvalue) 
     {
-        if (!this.#uiDependencies.has(path)) 
-            return;
-    
-        this.#uiDependencies.get(path).forEach(ui => 
+        let worklist = this.#uiDependencies.get(path);
+        if (worklist)
         {
-           if (DIR_GROUP_BOUND_TO_PATHS.includes(ui.directive)){
+            worklist.forEach(ui => 
+            {
+                if (DIR_GROUP_BOUND_TO_PATHS.includes(ui.directive)){
 
-                if (ui.hashandler){
-                    this.#runBindHandler(VERB_SET_UI, ui);
-                    return;
+                    if (ui.hashandler){
+                        this.#runBindHandler(VERB_SET_UI, ui);
+                        return;
+                    }
+
+                    if (ui.directive===DIR_BIND)
+                    {
+                        if (ui.inputType === UI_INPUT_TEXT){
+                            this.#setInputText(ui);
+                        }
+                        else if (ui.inputType === UI_INPUT_CHECKBOX){
+                            this.#setInputCheckbox(ui);
+                        }
+                        else if (ui.inputType === UI_INPUT_RADIO){
+                            this.#setInputRadio(ui);
+                        }
+                    }
+                    else if (ui.directive===DIR_CLASS){
+                        this.#setClass(ui);
+                    }
+                    else if (ui.directive===DIR_HREF){
+                        this.#setHref(ui);
+                    }
+                    else if (ui.directive===DIR_IMAGE_SRC){
+                        this.#setSrc(ui);
+                    }
+                    else if (ui.directive===DIR_INTERPOLATION){
+                        this.#setInterpolation(ui);
+                    }
+                    
+                }
+           
+            });
+        }
+
+        //Some directives are global = always run
+        let globalworklist = this.#uiDependencies.get('global');
+        if (globalworklist){
+            globalworklist.forEach(ui => 
+            {
+                if (DIR_GROUP_MARKUP_GENERATION.includes(ui.directive)){
+
+                    this.#renderTemplates(ui, path, changedvalue);  
                 }
 
-                if (ui.directive===DIR_BIND)
+                if (DIR_GROUP_COMPUTED.includes(ui.directive))
                 {
-                    if (ui.inputType === UI_INPUT_TEXT){
-                        this.#setInputText(ui);
+                    let principalpath = getPrincipalBareaPath(path);
+                    if (!dependencyTracker.isDepencencyPath(principalpath, ui.handlername) && path !== ROOT_OBJECT)
+                        return;
+
+                    this.#runComputedFunction(ui);
+                }
+
+                if (ui.directive === DIR_INTERPOLATION)
+                {
+        
+                    if (ui.nodeexpressions.length === 1)
+                    {
+                        //For performance, if a textnode contains only one interpolation and that is based on a computed value
+                        //textnodes based on a computed value or if there are more than two expressions then they are tracked with path = global
+                        let principalpath = getPrincipalBareaPath(path);
+                        if (!dependencyTracker.isDepencencyPath(principalpath, ui.directivevalue) && path !== ROOT_OBJECT)
+                            return;
                     }
-                    else if (ui.inputType === UI_INPUT_CHECKBOX){
-                        this.#setInputCheckbox(ui);
-                    }
-                    else if (ui.inputType === UI_INPUT_RADIO){
-                        this.#setInputRadio(ui);
-                    }
-                }
-                else if (ui.directive===DIR_CLASS){
-                    this.#setClass(ui);
-                }
-                else if (ui.directive===DIR_HREF){
-                    this.#setHref(ui);
-                }
-                else if (ui.directive===DIR_IMAGE_SRC){
-                    this.#setSrc(ui);
-                }
-                else if (ui.directive===DIR_INTERPOLATION){
+
                     this.#setInterpolation(ui);
                 }
-                
-           }
-           
-        });
-
-        this.#uiDependencies.get('global').forEach(ui => 
-        {
-            if (DIR_GROUP_MARKUP_GENERATION.includes(ui.directive)){
-
-                this.#renderTemplates(ui, path, changedvalue);  
-            }
-
-            if (DIR_GROUP_COMPUTED.includes(ui.directive))
-            {
-                let principalpath = getPrincipalBareaPath(path);
-                if (!dependencyTracker.isDepencencyPath(principalpath, ui.directivevalue) && path !== ROOT_OBJECT)
-                    return;
-
-                this.#runComputedFunctions(ui);
-            }
-
-            if (ui.directive === DIR_INTERPOLATION)
-            {
-    
-                let principalpath = getPrincipalBareaPath(path);
-                if (!dependencyTracker.isDepencencyPath(principalpath, ui.directivevalue) && path !== ROOT_OBJECT)
-                    return;
-
-                this.#setInterpolation(ui);
-            }
                
-        });
+            });
+        }
     }
 
-    #runComputedFunctions(ui)
+    #runComputedFunction(ui)
     {
 
         let handlername = ui.handlername;
@@ -1145,475 +1205,52 @@ class BareaApp
     #setInterpolation(ui)
     {
  
-        let interpol_value = "";
-        const attribute_value_type = this.#getExpressionType(ui.directivevalue,DIR_INTERPOLATION);
-        if (attribute_value_type==='INVALID')
+        let interpolatednode = ui.interpolatednode;
+        let nodetemplate = ui.nodetemplate;
+        //We loop individual expressions if many in a node
+        ui.nodeexpressions.forEach(ipstmt => 
         {
-                console.error(`The ${DIR_INTERPOLATION} directive has an invalid expression (${expr}).`);
-                return;
-        }
 
-        if (attribute_value_type===EXPR_TYPE_COMPUTED){
-            interpol_value=this.#computedProperties[ui.directivevalue].value;
-        }else if (attribute_value_type===EXPR_TYPE_ROOT_PATH || attribute_value_type===EXPR_TYPE_OBJREF || attribute_value_type===EXPR_TYPE_OBJREF_PATH)
-        {
-            if (ui.key && ui.data){
-                interpol_value = ui.data[ui.key];
-            }else{
-                if (ui.data)
-                    interpol_value = ui.data;
-            } 
-        }
-        else if (attribute_value_type === INTERPOL_INDEX)
-        {
-            interpol_value = this.#getClosestAttribute(node.parentElement, META_ARRAY_INDEX);
-        }
+            let interpol_value = "";
+            const attribute_value_type = this.#getExpressionType(ipstmt.directivevalue,DIR_INTERPOLATION);
+            if (attribute_value_type==='INVALID')
+            {
+                    console.error(`The ${DIR_INTERPOLATION} directive has an invalid expression (${ipstmt.directivevalue}).`);
+                    return;
+            }
+    
+            if (attribute_value_type===EXPR_TYPE_COMPUTED){
+                interpol_value=this.#computedProperties[ipstmt.directivevalue].value;
+            }else if (attribute_value_type===EXPR_TYPE_ROOT_PATH || attribute_value_type===EXPR_TYPE_OBJREF || attribute_value_type===EXPR_TYPE_OBJREF_PATH)
+            {
+                if (ipstmt.key && ipstmt.data){
+                    interpol_value = ipstmt.data[ipstmt.key];
+                }else{
+                    if (ipstmt.data)
+                        interpol_value = ipstmt.data;
+                } 
+            }
+            else if (attribute_value_type === INTERPOL_INDEX)
+            {
+                interpol_value = this.#getClosestAttribute(interpolatednode.parentElement, META_ARRAY_INDEX);
+            }
+    
+            if (!interpol_value)
+                interpol_value ="";
+    
+            if (typeof interpol_value === "object") 
+                interpol_value = JSON.stringify(interpol_value)
 
-        if (!interpol_value)
-            interpol_value ="";
+            nodetemplate = nodetemplate.replaceAll(ipstmt.expression, interpol_value);
 
-        if (typeof interpol_value === "object") 
-            interpol_value = JSON.stringify(interpol_value)
+        });
+       
       
-   
-        //const regex = new RegExp(`{{\\s*${ui.directivavalue.replace(/[.[\]]/g, '\\$&')}\\s*}}`, 'g');
-        //content = content.replace(regex, exprvalue);      
-        let content = ui.expression;
-        content = content.replaceAll(ui.expression, interpol_value);
-        ui.interpolatednode.textContent = content;
-        
+        interpolatednode.textContent = nodetemplate;
         
     }
 
     
-    
-    #buildDomDictionary(tag = this.#appElement, templateId=-1)
-    {
-
-        const templateChildren=[];
-
-        //Delete dynamic functions that was created along with the templates
-        dependencyTracker.deleteDynamicTemplateFunctions();
-
-        //Collect children of the template
-        //User defined
-        function collectDescendants(ce) {
-            templateChildren.push(ce);
-            for (let i = 0; i < ce.children.length; i++) {
-                collectDescendants(ce.children[i]);
-            }
-        }
-        tag.querySelectorAll(`[${DIR_FOREACH}]`).forEach(parent => {
-            Array.from(parent.children).forEach(child => collectDescendants(child));
-        });
-
-
-        const bareaelements = [...tag.querySelectorAll("*")].filter(el => 
-            [...el.attributes].some(attr => attr.name.startsWith("ba-"))
-        );
-
-        bareaelements.forEach(el => {
-            const bareaAttributes = el.getAttributeNames()
-            .filter(attr => attr.startsWith("ba-"))
-            .map(attr => ({ name: attr, value: el.getAttribute(attr) }));
-
-            //Skip all children of templates since they will be dealt with later on template rendering
-            if (templateChildren.includes(el))
-                return;
-
-            bareaAttributes.forEach(attr =>
-            {
-   
-                if (attr.name===DIR_FOREACH)
-                {
-                    if (!attr.value)
-                        return;
-                    if (this.#getExpressionType(attr.value, DIR_FOREACH)==='INVALID')
-                    {
-                        console.error(`Then ${DIR_FOREACH} directive has an invalid value (${attr.value}).`);
-                        return;
-                    }
-
-                    let templateHtml = el.innerHTML.trim()
-                        .replace(/>\s+</g, '><')  // Remove spaces between tags
-                        .replace(/(\S)\s{2,}(\S)/g, '$1 $2'); // Reduce multiple spaces to one inside text nodes
-
-                    const odo = this.#createDomDictionaryObject(el, el.parentElement, null, attr.name, attr.value, "template", true, templateHtml, el.localName, -1, null);
-                    this.#domDictionary.push(odo);
-                    el.remove();
-                }
-
-                if ([DIR_HIDE, DIR_SHOW, DIR_IF,DIR_CLASS_IF].includes(attr.name))
-                {
-                    const genMarkup = el.getAttribute(META_IS_GENERATED_MARKUP);
-                    const varname = el.getAttribute(META_ARRAY_VARNAME);
-                    const exprtype = this.#getExpressionType(attr.value, attr.name, varname);
-                    this.#internalSystemCounter++;
-                    let funcname = "";
-                    if (genMarkup){
-                        funcname = `${META_DYN_TEMPLATE_FUNC_PREFIX}${this.#internalSystemCounter}`;
-                    }else{
-                        funcname = `${META_DYN_FUNC_PREFIX}${this.#internalSystemCounter}`;
-                    }
-                  
-
-                    if (!attr.value)
-                        return;
-                    if (exprtype==='INVALID')
-                    {
-                        console.error(`Then ${attr.name} directive has an invalid value (${attr.value}).`);
-                        return;
-                    }
-          
-                    let iscomputed=false;
-                    if (exprtype === EXPR_TYPE_COMPUTED)
-                        iscomputed=true;
-
-                    let expressions=[];
-                    //A DIR_CLASS_IF expression contains both an express/handler and class name(s) 
-                    if (attr.name===DIR_CLASS_IF && attr.value.includes('?'))
-                    {
-                        let attrparts = attr.value.split('?');
-                        attrparts.forEach(n=>{expressions.push(n)});
-                    }
-                    else
-                    {
-                        expressions.push(attr.value);
-                    }
-
-                    if (iscomputed){
-                        const odo = this.#createDomDictionaryObject(el,el.parentElement,null,attr.name,"", DIR_TYPE_COMPUTED, true,"","",templateId,expressions);
-                        this.#domDictionary.push(odo);
-                    }
-                    else if (exprtype === EXPR_TYPE_ROOT_EXPR)
-                    {
-                        let condition = expressions[0];
-                        const evalobj = this.#appDataProxy;
-
-                        const boolRootFunc = function()
-                        {
-                            function  evalRootExpr(condition, context) {
-                                try {
-                                    return new Function("contextdata", `return ${condition};`)(context);
-                                } catch (error) {
-                                    console.error(`Error evaluating expression ${condition} on ${el.localName} with attribute ${attr.name}`);
-                                    return false;
-                                }
-                            }
-                            
-                            condition=condition.replaceAll('root.','contextdata.');
-                            return evalRootExpr(condition, evalobj);
-                        }
-
-                        //Make up a functionname
-                        expressions.push(funcname);
-                        this.#enableComputedProperties=true;
-                        this.#computedProperties[funcname] = new BareaComputedProperty(boolRootFunc,funcname, this);
-                        this.#computedKeys.push(funcname);
-                        const odo = this.#createDomDictionaryObject(el,el.parentElement,null,attr.name,"", DIR_TYPE_BOOLEXPR, true,"","",templateId,expressions);
-                        this.#domDictionary.push(odo);
-
-                    }
-                    else if (exprtype === EXPR_TYPE_OBJREF_EXPR)
-                    {
-                       
-                        //EXPR_TYPE_OBJREF_EXPR, example: show.showText===true
-                        let condition = expressions[0];
-                       
-                        const evalobj = el._bareaObject;
-                        if (!varname)
-                            return;
-                        if (!evalobj)
-                            return;
-
-                        const boolObjFunc = function()
-                        {
-                            function  evalObjExpr(condition, context) {
-                                try {
-                                    return new Function("contextdata", `return ${condition};`)(context);
-                                } catch (error) {
-                                    console.error(`Error evaluating expression ${condition} on ${el.localName} with attribute ${attr.name}`);
-                                    return false;
-                                }
-                            }
-                            
-                            condition=condition.replaceAll(varname+'.','contextdata.');
-                            return evalObjExpr(condition, evalobj);
-                        }
-
-                          //Make up a functionname
-                        expressions.push(funcname);
-                        this.#enableComputedProperties=true;
-                        this.#computedProperties[funcname] = new BareaComputedProperty(boolObjFunc,funcname, this);
-                        this.#computedKeys.push(funcname);
-                        const odo = this.#createDomDictionaryObject(el,el.parentElement,null,attr.name,"", DIR_TYPE_BOOLEXPR, true,"","",templateId,expressions);
-                        this.#domDictionary.push(odo);
-
-                      
-                    }  
-                    else if (exprtype === EXPR_TYPE_MIX_EXPR)
-                    {
-                       
-                        //EXPR_TYPE_OBJREF_EXPR, example: show.showText===true
-                        let condition = expressions[0];
-                       
-                        const subobj = el._bareaObject;
-                        const rootobj = this.#appDataProxy;
-                        if (!varname)
-                            return;
-                        if (!subobj)
-                            return;
-
-                        const boolMixedFunc = function()
-                        {
-                            function  evalMixedExpr(condition, subdata, rootdata) {
-                                try {
-                                    return new Function("subdata","rootdata", `return ${condition};`)(subdata,rootdata);
-                                } catch (error) {
-                                    console.error(`Error evaluating mixed expression ${condition} on ${el.localName} with attribute ${attr.name}`);
-                                    return false;
-                                }
-                            }
-                            
-                            condition=condition.replaceAll('root.','rootdata.');
-                            condition=condition.replaceAll(varname+'.','subdata.');
-                            return evalMixedExpr(condition, subobj,rootobj);
-                        }
-
-                        //Make up a functionname
-                        this.#bareaId++;
-                        expressions.push(funcname);
-                        this.#enableComputedProperties=true;
-                        this.#computedProperties[funcname] = new BareaComputedProperty(boolMixedFunc,funcname, this);
-                        this.#computedKeys.push(funcname);
-                        const odo = this.#createDomDictionaryObject(el,el.parentElement,null,attr.name,"", DIR_TYPE_BOOLEXPR, true,"","",templateId,expressions);
-                        this.#domDictionary.push(odo);
-                      
-                    }
-                   
-                }
-
-                if ([DIR_CLASS, DIR_IMAGE_SRC,DIR_HREF].includes(attr.name))
-                {
-                    if (!attr.value)
-                        return;
-
-                    let exprtype =this.#getExpressionType(attr.value, attr.name);
-                    if (exprtype==='INVALID')
-                    {
-                        console.error(`Then ${attr.name} directive has an invalid value (${attr.value}).`);
-                        return;
-                    }
-
-                    if (attr.name===DIR_IMAGE_SRC && el.localName.toLowerCase()!=="img")
-                        return;
-
-                    if (exprtype==EXPR_TYPE_ROOT_PATH && !el.hasOwnProperty('_bareaObject'))
-                    {
-                        let objpath = getLastBareaObjectName(attr.value);
-                        el._bareaObject=this.getProxifiedPathData(objpath);
-                        el._bareaKey=getLastBareaKeyName(attr.value);
-                     }
-
-                    const odo = this.#createDomDictionaryObject(el,el.parentElement,null,attr.name,attr.value, DIR_TYPE_UI_SETTER, true,"","",templateId,null);
-                    this.#domDictionary.push(odo);
-                    
-                }
-
-                if (DIR_BIND===attr.name)
-                {
-                    if (!attr.value)
-                        return;
-
-                    let exprtype = this.#getExpressionType(attr.value, DIR_BIND);
-                    if (exprtype==='INVALID')
-                    {
-                        console.error(`Then ${DIR_BIND} directive has an invalid (${attr.value}).`);
-                        return;
-                    }
-
-                    if (exprtype==EXPR_TYPE_ROOT_PATH && !el.hasOwnProperty('_bareaObject'))
-                    {
-                          let objpath = getLastBareaObjectName(attr.value);
-                          el._bareaObject=this.getProxifiedPathData(objpath);
-                          el._bareaKey=getLastBareaKeyName(attr.value);
-
-                    }
-
-                    const odo = this.#createDomDictionaryObject(el,el.parentElement,null,attr.name,attr.value, DIR_TYPE_BINDING, true,"","",templateId,null);
-                    this.#domDictionary.push(odo);
-                }
-
-                if (DIR_CLICK === attr.name)
-                {
-                    if (!attr.value)
-                        return;
-
-                    if (this.#getExpressionType(attr.value, DIR_CLICK)==='INVALID')
-                    {
-                        console.error(`The ${DIR_CLICK} directive is invalid (${attr.value}) click handlers should have parentheses.`);
-                        return;
-                    }
-
-                    let expressions=[];
-                    expressions.push(attr.value);
-                    const odo = this.#createDomDictionaryObject(el,el.parentElement,null,attr.name,"", DIR_TYPE_HANDLER, true,"","",templateId, expressions);
-                    this.#domDictionary.push(odo);
-                }
-            });
-
-        });
-
-        if (this.#enableInterpolation)
-        {
-            const walker = document.createTreeWalker(tag, NodeFilter.SHOW_TEXT, null, false);
-            while (walker.nextNode()) {
-                if (walker.currentNode.nodeValue.includes("{{") && walker.currentNode.nodeValue.includes("}}"))
-                {
-                    let paths = this.#getInterpolationPaths(walker.currentNode.nodeValue);
-                    const odo = this.#createDomDictionaryObject(walker.currentNode.parentElement, walker.currentNode.parentElement,walker.currentNode,DIR_INTERPOLATION,"", DIR_TYPE_UI_SETTER, true,walker.currentNode.nodeValue,"",templateId, paths);
-                    this.#domDictionary.push(odo);
-                }
-            }
-        }
-
-        let log = this.#getConsoleLog(4);
-        if (log.active){
-            console.log('dom dictionary: ' +  this.#domDictionary.length);
-            this.#domDictionary.forEach(t=> {
-                console.log(t);
-            });
-        }
-    }
-
-    #removeFromDomDictionaryById(id) 
-    {
-        this.#domDictionary = this.#domDictionary.filter(item => item.id !== id);
-    }
-
-    #removeTemplateChildrenFromDomDictionary(templatedId) 
-    {
-        this.#domDictionary = this.#domDictionary.filter(item => item.templateId !== templatedId); 
-    }
-
-    #createDomDictionaryObject(element, parentElement, node, directive, path, directiveType, isnew, templateMarkup, templateTagName, templateId, expressions)
-    {
-        if (!expressions)
-        {
-            expressions = [];
-            expressions.push(path);
-        }
-
-        let id = this.#domDictionaryId++;
-
-        return {id: id, templateId: templateId, element: element, elementnextsibling:null, parentelement:parentElement, node:node, directive: directive,  path:path, directivetype: directiveType, isnew: isnew, templateMarkup: templateMarkup, templateTagName: templateTagName, expressions: expressions  };
-    }
-  
-
-    #setupBindings() 
-    {
-
-
-      let workscope = this.#domDictionary.filter(p=> p.isnew && [DIR_TYPE_BINDING, DIR_TYPE_HANDLER].includes(p.directivetype));
-     
-        workscope.forEach(item => 
-        {
-
-            if (item.directive===DIR_BIND)
-            {
-                item.isnew = false;
-                item.element.addEventListener("input", (event) => {
-
-
-                    let attribFuncDef = item.element.getAttribute(DIR_BIND_HANDLER);
-                    if (attribFuncDef)
-                    {
-                        if (!item.element.hasOwnProperty('_bareaObject'))
-                            return;
-
-                        attribFuncDef=attribFuncDef.trim();
-                        let pieces = parseBareaFunctionCall(attribFuncDef);
-                        let allparams =  [VERB_SET_DATA, item.element, item.element._bareaObject];
-                        allparams.push(...pieces.params);
-
-                        if (this.#methods[pieces.functionName]) {
-                            this.#methods[pieces.functionName].apply(this, allparams);
-                        } else {
-                            console.warn(`Handler function '${pieces.functionName}' not found.`);
-                        }
-                        return;
-                    }
-
-                    const log = this.#getConsoleLog(3);
-                    if (item.element.type === "checkbox") 
-                    {
-                        if (log.active)
-                            console.log(log.name, "type: " + item.element.type, "key: " + valuekey, "input value: " + item.element.checked);
-
-                        item.element._bareaObject[item.element._bareaKey] =  item.element.checked;
-                    } 
-                    else if (item.element.type === "radio") 
-                    {
-                        if (log.active)
-                            console.log(log.name, "type: " + item.element.type, "key: " + valuekey, "input value: " + item.element.value);
-
-                        if (item.element.checked)
-                            item.element._bareaObject[item.element._bareaKey] =  item.element.value;
-
-                    } 
-                    else 
-                    {
-                        if (log.active)
-                            console.log(log.name, "type: " + item.element.type, "key: " + valuekey, "input value: " + item.element.value);
-
-                        item.element._bareaObject[item.element._bareaKey] =  item.element.value;
-
-                    }
-                });
-
-            }
-
-            if (item.directive=== DIR_CLICK)
-            {
-                if (!item.expressions)
-                    return;
-                if (!item.expressions.length===0)
-                    return;
-
-                item.isnew = false;
-                let attribFuncDef = item.expressions[0];
-                attribFuncDef=attribFuncDef.trim();
-                item.element.addEventListener("click", (event) => {
-  
-                    let eventdata = this.#appDataProxy;
-                    let bapath = item.element.getAttribute(META_PATH);
-                    if (!bapath)
-                    {
-                        if (item.element._bareaObject)
-                            eventdata = item.element._bareaObject;
-                    }
-                    else
-                    {
-                        eventdata = this.getProxifiedPathData(bapath);
-                    }
-                  
-                    let allparams = [event, item.element, eventdata];
-                    let pieces = parseBareaFunctionCall(attribFuncDef);
-                    allparams.push(...pieces.params);
-
-                    if (this.#methods[pieces.functionName]) {
-                        this.#methods[pieces.functionName].apply(this, allparams);
-                    } else {
-                        console.warn(`Handler function '${pieces.functionName}' not found.`);
-                    }
-                });
-  
-            }
-
-        });
-    
-    }
-
     /**
      * Render templates = adding new stuf to the DOM
      * @param {string} path - The path affected when proxy updated.
@@ -1729,300 +1366,13 @@ class BareaApp
             });
 
             if (fragment.childElementCount>0)
-                ui.parentelement.appendChild(fragment);
-           
+                ui.parentelement.appendChild(fragment);   
         
     }
 
-    #applyProxyChangeInterpolation(path='root', changedvalue)
-    {
-        const interpolations = this.#domDictionary.filter(p=>p.directive===DIR_INTERPOLATION);
-        interpolations.forEach(t=>
-        {
-            let count=0;
-            let content= t.templateMarkup;
-            t.expressions.forEach(expr=> 
-            {
-    
-                let exprvalue = null;
-                let exprtype = this.#getExpressionType(expr, DIR_INTERPOLATION);
-                if (exprtype===EXPR_TYPE_COMPUTED){
-                    exprvalue=this.#computedProperties[expr].value;
-                }else if (exprtype===EXPR_TYPE_ROOT_PATH){
-                    exprvalue = this.getPathData(expr);
-                }else if (exprtype===EXPR_TYPE_OBJREF){
-                    exprvalue = this.#getClosestBareaObject(t.element);
-                }
-                else if (exprtype===EXPR_TYPE_OBJREF_PATH){
-                    let subobj = this.#getClosestBareaObject(t.element);
-                    let key =  getLastBareaKeyName(expr);
-                    exprvalue = subobj[key];
-                }
-                else if (expr === INTERPOL_INDEX)
-                {
-                    exprvalue = this.#getClosestAttribute(t.element, META_ARRAY_INDEX);
-                }
-
-                if (!exprvalue)
-                    exprvalue ="";
-
-                if (typeof exprvalue === "object") 
-                    exprvalue = JSON.stringify(exprvalue)
-              
-                count++;
-                const regex = new RegExp(`{{\\s*${expr.replace(/[.[\]]/g, '\\$&')}\\s*}}`, 'g');
-                content = content.replace(regex, exprvalue);        
-                
-            });
-            if (count>0)
-                t.node.textContent = content;
-
-        });
-
-    }
-   
-    #applyProxyChangeToDOM(path='root', value=this.#appDataProxy, key, keyobject) 
-    {
-        
-            //Computed handlers get cashed value (updates when used by other, become dirty)
-            const computedfuncs = this.#domDictionary.filter(p=> p.directivetype === DIR_TYPE_COMPUTED);
-            computedfuncs.forEach(t=>
-            {
-              
-                let attribFuncDef = t.expressions[0];
-                let boundvalue = false;
-                attribFuncDef=attribFuncDef.trim();
-                if (this.#computedProperties[attribFuncDef]) {
-                        boundvalue = this.#computedProperties[attribFuncDef].value;
-                } else {
-                    console.warn(`Computed boolean handler '${attribFuncDef}' not found.`);
-                }
-                
-                if (t.directive===DIR_HIDE)
-                    t.element.style.display = boundvalue ? "none" : ""
-                else if (t.directive===DIR_SHOW)      
-                    t.element.style.display = boundvalue ? "" : "none";
-                else if (t.directive===DIR_IF) 
-                {
-                    if (boundvalue)
-                    {
-                        if (!t.element.parentNode)
-                            if (t.elementnextsibling)
-                                t.parentelement.insertBefore(t.element, t.elementnextsibling);
-                    }else
-                    {
-                        if (t.element.parentNode)
-                        {
-                            t.elementnextsibling = t.element.nextSibling;
-                            t.element.remove();
-                        }   
-                    }
-                }
-                else if (t.directive===DIR_CLASS_IF && t.expressions.length>1) 
-                {
-                   let classnames = t.expressions[1].split(/[\s,]+/);
-
-                    // Add classes if condition is true and remove if false
-                    if (boundvalue) {
-                        classnames.forEach(className => {
-                            if (!t.element.classList.contains(className)) {
-                                t.element.classList.add(className); // Add class if not already present
-                            }
-                        });
-                    } else {
-                        classnames.forEach(className => {
-                            if (t.element.classList.contains(className)) {
-                                t.element.classList.remove(className); // Remove class if present
-                            }
-                        });
-                    }
-                }    
-                      
-            });
-
-            //Boolean expressions (react on any data change)
-            const boolexpr = this.#domDictionary.filter(p=> p.directivetype === DIR_TYPE_BOOLEXPR);
-            boolexpr.forEach(t=>
-            {
-                if (!t.expressions)
-                    return;
-
-                   
-                let funcname = "";
-                if (t.expressions.length>2)
-                    funcname=t.expressions[2]
-                else
-                    funcname=t.expressions[1];
-
-                if (!funcname)
-                {
-                    console.error('Could not find function name for computed boolean expression fucntion');
-                    return;
-                }
-                let boundvalue = false;
-                if (this.#computedProperties[funcname]) {
-                    boundvalue = this.#computedProperties[funcname].value;
-                } else {
-                    console.warn(`Computed boolean expression fucntion '${pieces.functionName}' not found.`);
-                }    
-                 
-                
-                if (t.directive===DIR_HIDE)
-                    t.element.style.display = boundvalue ? "none" : ""
-                else if (t.directive===DIR_SHOW)      
-                    t.element.style.display = boundvalue ? "" : "none";
-                else if (t.directive===DIR_IF) 
-                {
-                      if (boundvalue)
-                      {
-                          if (!t.element.parentNode)
-                              if (t.elementnextsibling)
-                                  t.parentelement.insertBefore(t.element, t.elementnextsibling);
-                      }else
-                      {
-                          if (t.element.parentNode)
-                          {
-                              t.elementnextsibling = t.element.nextSibling;
-                              t.element.remove();
-                          }   
-                      }
-                } 
-                else if (t.directive===DIR_CLASS_IF && t.expressions.length>1) 
-                {
-                   let classnames = t.expressions[1].split(/[\s,]+/);
-
-                    // Add classes if condition is true and remove if false
-                    if (boundvalue) {
-                        classnames.forEach(className => {
-                            if (!t.element.classList.contains(className)) {
-                                t.element.classList.add(className); // Add class if not already present
-                            }
-                        });
-                    } else {
-                        classnames.forEach(className => {
-                            if (t.element.classList.contains(className)) {
-                                t.element.classList.remove(className); // Remove class if present
-                            }
-                        });
-                    }
-                }     
-                        
-            });
-
-            const bareabind = this.#domDictionary.filter(p=>p.directive===DIR_BIND);
-            bareabind.forEach(t=>
-            {
-             
-                if (!t.element._bareaObject || !t.element._bareaKey)
-                    return;
-
-                let boundvalue = t.element._bareaObject[t.element._bareaKey];
-                if (!boundvalue)
-                    return;
-
-               
-                let attribFuncDef = t.element.getAttribute(DIR_BIND_HANDLER);
-                if (attribFuncDef)
-                {
-                    attribFuncDef=attribFuncDef.trim();
-                    if (this.#getExpressionType(attribFuncDef, DIR_BIND_HANDLER)==="INVALID")
-                        return;
-                 
-                    let pieces = parseBareaFunctionCall(attribFuncDef);
-                    let allparams = [VERB_SET_UI, t.element, boundvalue];
-                    allparams.push(...pieces.params);
-
-                    if (this.#methods[pieces.functionName]) {
-                        this.#methods[pieces.functionName].apply(this, allparams);
-                    } else {
-                        console.warn(`Handler function '${pieces.functionName}' not found.`);
-                    }
-                    return;
-                }
-
-
-                if (t.element.type === "checkbox") 
-                {
-                    if (!boundvalue)
-                        boundvalue=false;
-
-                    t.element.checked = boundvalue;
-                } 
-                else if (t.element.type === "radio")
-                {
-                    t.element.checked = t.element.value === boundvalue;
-                } 
-                else 
-                {
-                    if (!boundvalue)
-                        value="";
-
-                    if (t.element.value !== boundvalue) 
-                    {
-                        t.element.value = boundvalue;
-                    }
-                }       
-                                
-            });
-
-            
-            const bareaclass = this.#domDictionary.filter(p=>p.directive===DIR_CLASS && p.directivetype===DIR_TYPE_UI_SETTER);
-            bareaclass.forEach(t=>
-            {
-
-                if (!t.element._bareaObject || !t.element._bareaKey)
-                    return;
-
-                let boundvalue = t.element._bareaObject[t.element._bareaKey];
-                if (!boundvalue)
-                    return;
-             
-                if (boundvalue.includes(','))
-                    boundvalue = boundvalue.replaceAll(',', ' ');
-
-                t.element.className = boundvalue || "";
-        
-            });
-
-            const bareaimgsrc = this.#domDictionary.filter(p=>p.directive===DIR_IMAGE_SRC && p.directivetype===DIR_TYPE_UI_SETTER);
-            bareaimgsrc.forEach(t=>
-            {
-                if (!t.element._bareaObject || !t.element._bareaKey)
-                    return;
-
-                let boundvalue = t.element._bareaObject[t.element._bareaKey];
-                if (!boundvalue)
-                    return;
-
-                if (boundvalue && (t.element.src!==boundvalue))
-                {
-                    t.element.src = boundvalue;
-                }
-        
-            });
-
-            const bahref = this.#domDictionary.filter(p=>p.directive===DIR_HREF && p.directivetype===DIR_TYPE_UI_SETTER);
-            bahref.forEach(t=>
-            {
-                if (!t.element._bareaObject || !t.element._bareaKey)
-                    return;
-
-                let boundvalue = t.element._bareaObject[t.element._bareaKey];
-                if (!boundvalue)
-                    return;
-
-                if (boundvalue && (t.element.href !== boundvalue))
-                {
-                    t.element.href = boundvalue;
-                }
-        
-            });
-          
-    }
-
-   
 
     /*** Internal Helpers ***/
+
     #getExpressionType = function(expression, directive, varname) 
     {
         if ([DIR_CLASS, DIR_BIND, DIR_IMAGE_SRC, DIR_HREF].includes(directive))
@@ -2102,18 +1452,7 @@ class BareaApp
 
     }
 
-    #shallowEqual(obj1, obj2) 
-    {
-        if (obj1 === obj2) return true; // Fast reference check
-      
-        const keys1 = Reflect.ownKeys(obj1);
-        const keys2 = Reflect.ownKeys(obj2);
-        if (keys1.length !== keys2.length) return false;
-      
-        return keys1.every(key => obj1[key] === obj2[key]);
-    }
-
-    
+   
     #getClosestBareaObject(element)
     {
         if (element.hasOwnProperty("_bareaObject"))
@@ -2154,7 +1493,6 @@ class BareaApp
     }
 
    
-    //Get interpolation data paths from a string found in the dom
     #getInterpolationPaths(str) {
         const regex = /{{(.*?)}}/g;
         let matches = [];
@@ -2181,31 +1519,6 @@ class BareaApp
         return result;
     }
 
-    //Generates a flat object from any object
-    getObjectDictionary(obj, parentKey = '') {
-        let result = {};
-        for (const key in obj) {
-            if (obj.hasOwnProperty(key)) {
-                const newKey = parentKey ? `${parentKey}.${key}` : key;
-                if (typeof obj[key] === 'object' && obj[key] !== null) {
-                    if (Array.isArray(obj[key])) {
-                        result[newKey] = obj[key]; 
-                        obj[key].forEach((item, index) => {
-                            result[`${newKey}[${index}]`] = item; 
-                            Object.assign(result, this.getObjectDictionary(item, `${newKey}[${index}]`));
-                        });
-                    } else {
-                        result[newKey] = obj[key]; 
-                        Object.assign(result, this.getObjectDictionary(obj[key], newKey));
-                    }
-                } else {
-                    result[newKey] = obj[key];  
-                }
-            }
-        }
-    
-        return result;
-    }
     
     /*  Logging  */
     enableConsoleLog(id, active)
