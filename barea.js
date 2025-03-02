@@ -279,17 +279,17 @@ class BareaApp
             if (log.active)
                 console.log(log.name, path, value, key, target);
 
-            this.#renderTemplates(path, value, key, target);
-            this.#setupBindings();
-            this.#applyProxyChangeInterpolation(path, value);
-            this.#applyProxyChangeToDOM(path, value, key, target);
+            this.#notifyUI(path);
+            //this.#setupBindings();
+            //this.#applyProxyChangeInterpolation(path, value);
+            //this.#applyProxyChangeToDOM(path, value, key, target);
 
         }, this.#appData);
 
         this.#appDataProxy = proxy;
   
         //Important: Always directly after proxification
-        this.#buildDomDictionary();
+        this.#detectElements();
       
 
         if (this.#enableBareaId && ! this.#appDataProxy.hasOwnProperty('baId')) 
@@ -299,10 +299,10 @@ class BareaApp
             this.#mountedHandler.apply(this, [this.#appDataProxy]);
    
 
-        this.#renderTemplates();
-        this.#setupBindings();
-        this.#applyProxyChangeInterpolation();
-        this.#applyProxyChangeToDOM();
+        //this.#renderTemplates();
+        //this.#setupBindings();
+        //this.#applyProxyChangeInterpolation();
+        //this.#applyProxyChangeToDOM();
         
         return this.#appDataProxy;
     }
@@ -540,7 +540,7 @@ class BareaApp
 
                         let inputtype = "";
                         let systeminput = -1;
-                        if (tracking_obj.directive===DIR_BIND)
+                        if (attr.name===DIR_BIND)
                         {
                             inputtype = el.getAttribute("type");
                             if (!inputtype)
@@ -562,7 +562,7 @@ class BareaApp
                             tracking_obj.key=getLastBareaKeyName(attr.value);
                         }else{
                             tracking_obj.data=templatedata;
-                            tracking_obj.key=templatekey;
+                            tracking_obj.key=getLastBareaKeyName(attr.value);
                         }
                     
                         let handlername = el.getAttribute(DIR_BIND_HANDLER);
@@ -656,8 +656,7 @@ class BareaApp
                         if (condition.includes('?'))
                             condition = condition.split('?')[0];
 
-                     
-                    
+                       
 
                           //SPECIAL: NO TRACKING, ONLY REGISTER HANDLER
                         if (attribute_value_type === EXPR_TYPE_HANDLER)
@@ -665,7 +664,7 @@ class BareaApp
                             el.addEventListener("click", (event) => {
                   
                                 let eventdata = this.#appDataProxy;
-                                let bapath = item.element.getAttribute(META_PATH);
+                                let bapath = el.getAttribute(META_PATH);
                                 if (!bapath)
                                 {
                                     if (templatedata)
@@ -676,7 +675,7 @@ class BareaApp
                                     eventdata = this.getProxifiedPathData(bapath);
                                 }
                                   
-                                let allparams = [event, item.element, eventdata];
+                                let allparams = [event, el, eventdata];
                                 let pieces = parseBareaFunctionCall(condition);
                                 allparams.push(...pieces.params);
                                 if (this.#methods[pieces.functionName]) {
@@ -696,20 +695,23 @@ class BareaApp
                             handlername = `${META_DYN_FUNC_PREFIX}${this.#internalSystemCounter}`;
                         }
 
-                        const tracking_obj = this.#createUiTrackingObject(templateid,el,attr.name,condition,null,"",-1);
+                        const tracking_obj = this.#createUiTrackingObject(templateid,el,attr.name,attr.value,null,"",-1);
                         if (!templatedata){
-                            let objpath = getLastBareaObjectName(attr.value);
-                            tracking_obj.data=this.getProxifiedPathData(objpath);
-                            tracking_obj.key=getLastBareaKeyName(attr.value);
+                            tracking_obj.data=this.#appDataProxy;
+                            tracking_obj.key="";
                         }else{
                             tracking_obj.data=templatedata;
                             tracking_obj.key=templatekey;
                         }
+
+                        if (attr.name === DIR_IF){
+                            tracking_obj.elementnextsibling=el.nextSibling;
+                        }
             
-                        if (attribute_value_type === EXPR_TYPE_COMPUTED){
-                            const tracking_obj = this.#createUiTrackingObject(templateid,el,attr.name,condition,null,"",-1);
-                            tracking_obj.handlername=handlername;
-                            this.#trackUI('runhandlers', tracking_obj);
+                        if (attribute_value_type === EXPR_TYPE_COMPUTED)
+                        {
+                            tracking_obj.handlername=condition;
+                            this.#trackUI('global', tracking_obj);
                         }
                         else if (attribute_value_type === EXPR_TYPE_ROOT_EXPR){
                     
@@ -733,7 +735,7 @@ class BareaApp
                             this.#computedProperties[handlername] = new BareaComputedProperty(boolRootFunc,handlername, this);
                             this.#computedKeys.push(handlername);
                             tracking_obj.handlername=handlername;
-                            this.#trackUI('runhandlers', tracking_obj);
+                            this.#trackUI('global', tracking_obj);
 
                         }
                         else if (attribute_value_type === EXPR_TYPE_OBJREF_EXPR)
@@ -758,7 +760,7 @@ class BareaApp
                             this.#computedProperties[handlername] = new BareaComputedProperty(boolObjFunc,handlername, this);
                             this.#computedKeys.push(handlername);
                             tracking_obj.handlername=handlername;
-                            this.#trackUI('runhandlers', tracking_obj);
+                            this.#trackUI('global', tracking_obj);
 
                         }  
                         else if (attribute_value_type === EXPR_TYPE_MIX_EXPR)
@@ -787,10 +789,47 @@ class BareaApp
                             this.#computedProperties[handlername] = new BareaComputedProperty(boolMixedFunc,handlername, this);
                             this.#computedKeys.push(handlername);
                             tracking_obj.handlername=handlername;
-                            this.#trackUI('runhandlers', tracking_obj);
+                            this.#trackUI('global', tracking_obj);
                         
                         }
                         
+                    }
+                    else if (DIR_GROUP_MARKUP_GENERATION.includes(attr.name))
+                    {
+                        const attribute_value_type = this.#getExpressionType(attr.value, attr.name);
+                        if (attribute_value_type==='INVALID')
+                        {
+                            console.error(`Then ${attr.name} directive has an invalid value (${attr.value}).`);
+                            return;
+                         }
+
+                         let [varname, datapath] = attr.value.split(" in ").map(s => s.trim());
+                         if (!varname)
+                         {
+                             console.error(`No variable name was found in the ${attr.name} expression`);
+                             return;
+                         }
+                         if (!datapath)
+                         {
+                             console.error(`No path or computed function was found in the ${attr.name} expression`);
+                             return;
+                         }
+             
+                        
+                        let templateHtml = el.innerHTML.trim()
+                            .replace(/>\s+</g, '><')  // Remove spaces between tags
+                            .replace(/(\S)\s{2,}(\S)/g, '$1 $2'); // Reduce multiple spaces to one inside text nodes
+        
+                        const tracking_obj = this.#createUiTemplateTrackingObject(templateid,el,attr.name,attr.value,null,"", el.parentElement,templateHtml, el.localName);
+                        if (attribute_value_type===EXPR_TYPE_COMPUTED){ 
+                            this.#trackUI('global', tracking_obj);
+                        }
+                        else{
+                            this.#trackUI(datapath, tracking_obj);
+                        }
+                        el.remove();
+
+                        this.#renderTemplates(tracking_obj);
                     }
                   
 
@@ -801,32 +840,32 @@ class BareaApp
         //Interpolation is detected in text nodes {{interplation}}
         if (this.#enableInterpolation)
         {
-            function traverseNodes(node) {
+            function traverseNodes(node, instance) {
                 if (node.nodeType === Node.TEXT_NODE) 
                 {
                     if (node.nodeValue.includes("{{") && node.nodeValue.includes("}}"))
                     {
                         let content = node.nodeValue;
-                        let paths = this.#getInterpolationPaths(node.nodeValue);
+                        let paths = instance.#getInterpolationPaths(node.nodeValue);
                         let count=0;
                         paths.forEach(t=>{
 
                             let exprvalue="";
-                            const attribute_value_type = this.#getExpressionType(t,DIR_INTERPOLATION);
+                            const attribute_value_type = instance.#getExpressionType(t,DIR_INTERPOLATION);
                             if (attribute_value_type==='INVALID')
                             {
                                 console.error(`The ${DIR_INTERPOLATION} directive has an invalid (${t}).`);
                                 return;
                             }
 
-                            let tracking_obj = this.#createUiInterpolationTrackingObject(templateid,DIR_INTERPOLATION,t,null,"",node);
+                            let tracking_obj = instance.#createUiInterpolationTrackingObject(templateid,DIR_INTERPOLATION,t,null,"",node);
                             
                             if (attribute_value_type===EXPR_TYPE_COMPUTED){
-                                exprvalue=this.#computedProperties[t].value;
+                                exprvalue=instance.#computedProperties[t].value;
                             }else if (attribute_value_type===EXPR_TYPE_ROOT_PATH || attribute_value_type===EXPR_TYPE_OBJREF || attribute_value_type===EXPR_TYPE_OBJREF_PATH)
                             {
                                 let objpath = getLastBareaObjectName(t);
-                                tracking_obj.data=this.getProxifiedPathData(objpath);
+                                tracking_obj.data=instance.getProxifiedPathData(objpath);
                                 let interpolation_key = getLastBareaKeyName(t);
                                 if (interpolation_key!=='root'){
                                     tracking_obj.key=interpolation_key;
@@ -840,7 +879,7 @@ class BareaApp
                             }
                             else if (expr === INTERPOL_INDEX)
                             {
-                                exprvalue = this.#getClosestAttribute(el, META_ARRAY_INDEX);
+                                exprvalue = instance.#getClosestAttribute(el, META_ARRAY_INDEX);
                             }
             
                             if (!exprvalue)
@@ -850,32 +889,32 @@ class BareaApp
                                 exprvalue = JSON.stringify(exprvalue)
                           
                             count++;
-                            const regex = new RegExp(`{{\\s*${expr.replace(/[.[\]]/g, '\\$&')}\\s*}}`, 'g');
+                            const regex = new RegExp(`{{\\s*${t.replace(/[.[\]]/g, '\\$&')}\\s*}}`, 'g');
                             content = content.replace(regex, exprvalue);        
                             
 
-                            this.#trackUI(t, tracking_obj);
-                        })
+                            instance.#trackUI(t, tracking_obj);
+                        });
 
                         if (count>0)
-                            t.textContent = content;
+                            node.textContent = content;
                        
                     }
                 }
                 
                 // Traverse child nodes
                 for (let child of node.childNodes) {
-                    traverseNodes(child);
+                    traverseNodes(child, instance);
                 }
             }
             
-            traverseNodes(tag);
+            traverseNodes(tag, this);
 
         }
 
         let log = this.#getConsoleLog(4);
-        if (log.active){
-            console.log('UI detection (tracking): ' +  this.#uiDependencies.length);
+        if (log.active){length
+            console.log('UI detection (tracking)');
             this.#uiDependencies.forEach((value, key) => {
                 console.log(key, value);
             });
@@ -906,7 +945,7 @@ class BareaApp
         {
             this.#uiDependencies.set(path, new Set());
         }
-        uiDependencies.get(path).add(ui);
+        this.#uiDependencies.get(path).add(ui);
     }
     
     #notifyUI(path) 
@@ -919,7 +958,7 @@ class BareaApp
            if (DIR_GROUP_VISUAL_UPDATE.includes(ui.directive)){
 
                 if (ui.hashandler){
-                    this.#runBindHandler(ui, ui.handlername, ui.data, ui.key);
+                    this.#runBindHandler(VERB_SET_UI, ui, ui.handlername, ui.data, ui.key);
                     return;
                 }
 
@@ -948,6 +987,79 @@ class BareaApp
            }
            
         });
+
+        this.#uiDependencies.get('global').forEach(ui => 
+            {
+               if (DIR_GROUP_MARKUP_GENERATION.includes(ui.directive)){
+
+                    this.#renderTemplates(ui, path);  
+               }
+
+               if (DIR_GROUP_TRACK_AND_FORGET.includes(ui.directive)){
+    
+                   this.#runComputedFunctions(ui);
+               }
+               
+            });
+    }
+
+    #runComputedFunctions(ui)
+    {
+
+        let handlername = ui.handlername;
+        let truevalue = ui.directivevalue;
+        if (truevalue.includes('?'))
+            truevalue=truevalue.split('?')[1];
+
+        let boundvalue = false;
+        if (this.#computedProperties[handlername]) {
+                boundvalue = this.#computedProperties[handlername].value;
+        } else {
+            console.warn(`Computed boolean handler '${handlername}' not found.`);
+        }
+        
+        if (ui.directive===DIR_HIDE)
+            ui.element.style.display = boundvalue ? "none" : ""
+        else if (ui.directive===DIR_SHOW)      
+            ui.element.style.display = boundvalue ? "" : "none";
+        else if (ui.directive===DIR_IF) 
+        {
+            if (boundvalue)
+            {
+                if (!ui.element.parentNode)
+                    if (ui.elementnextsibling)
+                        ui.parentelement.insertBefore(ui.element, ui.elementnextsibling);
+            }else
+            {
+                if (ui.element.parentNode)
+                {
+                    ui.elementnextsibling = ui.element.nextSibling;
+                    ui.element.remove();
+                }   
+            }
+        }
+        else if (ui.directive===DIR_CLASS_IF) 
+        {
+           let classnames = truevalue.split(/[\s,]+/);
+
+            // Add classes if condition is true and remove if false
+            if (boundvalue) {
+                classnames.forEach(className => {
+                    if (!ui.element.classList.contains(className)) {
+                        ui.element.classList.add(className); // Add class if not already present
+                    }
+                });
+            } else {
+                classnames.forEach(className => {
+                    if (ui.element.classList.contains(className)) {
+                        ui.element.classList.remove(className); // Remove class if present
+                    }
+                });
+            }
+        }    
+              
+    
+
     }
 
     #runBindHandler(verb, ui, handlername, data, key)
@@ -993,8 +1105,8 @@ class BareaApp
         if (!data[key])
             return;
 
-        if (!orgattributes)
-            orgattributes="";
+        if (!orgvalue)
+            orgvalue="";
      
         let classes = data[key];
         if (classes.includes(','))
@@ -1082,12 +1194,12 @@ class BareaApp
                     const genMarkup = el.getAttribute(META_IS_GENERATED_MARKUP);
                     const varname = el.getAttribute(META_ARRAY_VARNAME);
                     const exprtype = this.#getExpressionType(attr.value, attr.name, varname);
-                    this.#internalSysemCounter++;
+                    this.#internalSystemCounter++;
                     let funcname = "";
                     if (genMarkup){
-                        funcname = `${META_DYN_TEMPLATE_FUNC_PREFIX}${this.#internalSysemCounter}`;
+                        funcname = `${META_DYN_TEMPLATE_FUNC_PREFIX}${this.#internalSystemCounter}`;
                     }else{
-                        funcname = `${META_DYN_FUNC_PREFIX}${this.#internalSysemCounter}`;
+                        funcname = `${META_DYN_FUNC_PREFIX}${this.#internalSystemCounter}`;
                     }
                   
 
@@ -1455,35 +1567,30 @@ class BareaApp
      * @param {string} key - The key in the parent affected object.
      * @param {any} target - The parent object of what's changed.
      */
-    #renderTemplates(path='root',value, key='none', target) 
+    #renderTemplates(ui, path='root') 
     {
 
         let foreacharray = [];
-        let canrun = false;
+     
 
-      
-        let templates = this.#domDictionary.filter(p=> p.directivetype===DIR_TYPE_TEMPLATE);
-      
-        templates.forEach(template => {
-
-            let [varname, datapath] = template.path.split(" in ").map(s => s.trim());
+            let [varname, datapath] = ui.directivevalue.split(" in ").map(s => s.trim());
             if (!varname)
             {
-                console.error(`No variable name was found in the ${DIR_FOREACH} expression`);
+                console.error(`No variable name was found in the ${ui.directive} expression`);
                 return;
             }
             if (!datapath)
             {
-                console.error(`No path or computed function was found in the ${DIR_FOREACH} expression`);
+                console.error(`No path or computed function was found in the ${ui.directive} expression`);
                 return;
             }
 
-            if (this.#getExpressionType(datapath, DIR_FOREACH)===EXPR_TYPE_COMPUTED)
+            if (this.#getExpressionType(datapath, ui.directive)===EXPR_TYPE_COMPUTED)
             {
                 if (this.#computedProperties[datapath])
                     foreacharray = this.#computedProperties[datapath].value;
                 else
-                    console.warn(`Could not find computed function name in the ${DIR_FOREACH} directive`);
+                    console.warn(`Could not find computed function name in the ${ui.directive} directive`);
 
                 //This template is based on a computed array
                 //If the incoming path is not a dependency of the computed property, then return
@@ -1506,21 +1613,20 @@ class BareaApp
             }
                
 
-
            let counter=0;
             this.#removeTemplateChildrenFromDomDictionary(template.id);
-            template.parentelement.innerHTML = ""; // Clear list
+            ui.parentelement.innerHTML = ""; // Clear list
           
             const fragment = document.createDocumentFragment();
 
-            foreacharray.forEach(item => {
-                const newtag = document.createElement(template.templateTagName);
+            foreacharray.forEach(row => {
+                const newtag = document.createElement(ui.templatetagname);
               
-                newtag.innerHTML = template.templateMarkup;
+                newtag.innerHTML = ui.templatemarkup;
                 newtag.setAttribute(META_ARRAY_VARNAME, varname);
                 newtag.setAttribute(META_ARRAY_INDEX, counter);
                 newtag.setAttribute(META_IS_GENERATED_MARKUP, true);
-                newtag._bareaObject = item;
+
                 if (newtag.id)
                     newtag.id = newtag.id + `-${counter}` 
                 else
@@ -1530,7 +1636,6 @@ class BareaApp
             
                 newtag.querySelectorAll(`[${DIR_IF}], [${DIR_HIDE}], [${DIR_SHOW}], [${DIR_CLASS_IF}], [${DIR_CLICK}], [${DIR_BIND}]`).forEach(el => 
                 {
-                    el._bareaObject = item;
                     el.setAttribute(META_ARRAY_VARNAME, varname);
                     el.setAttribute(META_ARRAY_INDEX, counter);
                     el.setAttribute(META_IS_GENERATED_MARKUP, true);
@@ -1539,9 +1644,8 @@ class BareaApp
                     if (el.hasAttribute(DIR_BIND)) {
                         let attrib = el.getAttribute(DIR_BIND);
                         if (!attrib.includes(varname + '.'))
-                            console.warn(`The ${DIR_BIND} expression ${attrib} used in an element under ${DIR_FOREACH} does not match the ${DIR_FOREACH} expression, should reference '${varname}'.`);
+                            console.warn(`The ${DIR_BIND} expression ${attrib} used in an element under ${ui.directive} does not match the ${ui.directive} expression, should reference '${varname}'.`);
                     
-                        el._bareaKey=getLastBareaKeyName(attrib);
                     }
                    
                     
@@ -1563,16 +1667,16 @@ class BareaApp
                    
                 });
 
-                this.#buildDomDictionary(newtag, template.id);
+                this.#detectElements(newtag, ui.id, row, "");
 
                 counter++;
 
             });
 
             if (fragment.childElementCount>0)
-                template.parentelement.appendChild(fragment);
+                ui.parentelement.appendChild(fragment);
            
-        });    
+        
     }
 
     #applyProxyChangeInterpolation(path='root', changedvalue)
