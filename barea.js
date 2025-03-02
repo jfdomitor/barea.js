@@ -25,8 +25,9 @@ const DIR_IF = 'ba-if';
 const DIR_HREF = 'ba-href';
 const DIR_INTERPOLATION = 'interpolation';
 
-const DIR_GROUP_VISUAL_UPDATE = [DIR_BIND,DIR_CLASS,DIR_HREF,DIR_IMAGE_SRC,DIR_INTERPOLATION]
-const DIR_GROUP_TRACK_AND_FORGET = [DIR_CLICK,DIR_CLASS_IF,DIR_HIDE,DIR_SHOW, DIR_IF]
+const DIR_GROUP_BOUND_TO_PATHS = [DIR_BIND,DIR_CLASS,DIR_HREF,DIR_IMAGE_SRC,DIR_INTERPOLATION]
+const DIR_GROUP_TRACK_AND_FORGET = [DIR_CLICK]
+const DIR_GROUP_COMPUTED = [DIR_CLASS_IF,DIR_HIDE,DIR_SHOW, DIR_IF]
 const DIR_GROUP_MARKUP_GENERATION = [DIR_FOREACH]
 
 const UI_INPUT_TEXT = 1;
@@ -280,9 +281,6 @@ class BareaApp
                 console.log(log.name, path, value, key, target);
 
             this.#notifyUI(path, value);
-            //this.#setupBindings();
-            //this.#applyProxyChangeInterpolation(path, value);
-            //this.#applyProxyChangeToDOM(path, value, key, target);
 
         }, this.#appData);
 
@@ -295,15 +293,12 @@ class BareaApp
         if (this.#enableBareaId && ! this.#appDataProxy.hasOwnProperty('baId')) 
             this.#appDataProxy.baId = ++this.#bareaId;  // Assign a new unique ID
 
-        if (this.#mountedHandler)   
+        if (this.#mountedHandler) 
+        {  
             this.#mountedHandler.apply(this, [this.#appDataProxy]);
+        }
    
 
-        //this.#renderTemplates();
-        //this.#setupBindings();
-        //this.#applyProxyChangeInterpolation();
-        //this.#applyProxyChangeToDOM();
-        
         return this.#appDataProxy;
     }
 
@@ -529,7 +524,7 @@ class BareaApp
 
                     this.#internalSystemCounter++;
             
-                    if (DIR_GROUP_VISUAL_UPDATE.includes(attr.name))
+                    if (DIR_GROUP_BOUND_TO_PATHS.includes(attr.name))
                     {
                         const attribute_value_type = this.#getExpressionType(attr.value, attr.name);
                         if (attribute_value_type==='INVALID')
@@ -643,7 +638,7 @@ class BareaApp
                         }
                             
                     }
-                    else if (DIR_GROUP_TRACK_AND_FORGET.includes(attr.name))
+                    else if (DIR_GROUP_COMPUTED.includes(attr.name))
                     {
 
                         const genMarkup = el.getAttribute(META_IS_GENERATED_MARKUP);
@@ -658,38 +653,6 @@ class BareaApp
                         let condition = attr.value.trim();
                         if (condition.includes('?'))
                             condition = condition.split('?')[0];
-
-                       
-
-                          //SPECIAL: NO TRACKING, ONLY REGISTER HANDLER
-                        if (attribute_value_type === EXPR_TYPE_HANDLER)
-                        {
-                            el.addEventListener("click", (event) => {
-                  
-                                let eventdata = this.#appDataProxy;
-                                let bapath = el.getAttribute(META_PATH);
-                                if (!bapath)
-                                {
-                                    if (templatedata)
-                                         eventdata = templatedata;
-                                }
-                                else
-                                {
-                                    eventdata = this.getProxifiedPathData(bapath);
-                                }
-                                  
-                                let allparams = [event, el, eventdata];
-                                let pieces = parseBareaFunctionCall(condition);
-                                allparams.push(...pieces.params);
-                                if (this.#methods[pieces.functionName]) {
-                                       this.#methods[pieces.functionName].apply(this, allparams);
-                                } else {
-                                    console.warn(`Handler function '${pieces.functionName}' not found.`);
-                                }
-                            });
-                               
-                            return;
-                        }
 
                         let handlername = "";
                         if (genMarkup){
@@ -715,6 +678,7 @@ class BareaApp
                         {
                             tracking_obj.handlername=condition;
                             this.#trackUI('global', tracking_obj);
+                            this.#runComputedFunctions(tracking_obj);
                         }
                         else if (attribute_value_type === EXPR_TYPE_ROOT_EXPR){
                     
@@ -739,6 +703,7 @@ class BareaApp
                             this.#computedKeys.push(handlername);
                             tracking_obj.handlername=handlername;
                             this.#trackUI('global', tracking_obj);
+                            this.#runComputedFunctions(tracking_obj);
 
                         }
                         else if (attribute_value_type === EXPR_TYPE_OBJREF_EXPR)
@@ -764,6 +729,7 @@ class BareaApp
                             this.#computedKeys.push(handlername);
                             tracking_obj.handlername=handlername;
                             this.#trackUI('global', tracking_obj);
+                            this.#runComputedFunctions(tracking_obj);
 
                         }  
                         else if (attribute_value_type === EXPR_TYPE_MIX_EXPR)
@@ -793,7 +759,46 @@ class BareaApp
                             this.#computedKeys.push(handlername);
                             tracking_obj.handlername=handlername;
                             this.#trackUI('global', tracking_obj);
+                            this.#runComputedFunctions(tracking_obj);
                         
+                        }
+                        
+                    }
+                    else if (DIR_GROUP_TRACK_AND_FORGET.includes(attr.name))
+                    {
+                        const attribute_value_type = this.#getExpressionType(attr.value, attr.name);
+                        if (attribute_value_type==='INVALID')
+                        {
+                            console.error(`Then ${attr.name} directive has an invalid value (${attr.value}).`);
+                            return;
+                         }
+
+                        //SPECIAL: NO TRACKING, ONLY REGISTER HANDLER
+                        if (attribute_value_type === EXPR_TYPE_HANDLER)
+                        {
+                            el.addEventListener("click", (event) => {
+                  
+                                let eventdata = this.#appDataProxy;
+                                let bapath = el.getAttribute(META_PATH);
+                                if (!bapath)
+                                {
+                                    if (templatedata)
+                                         eventdata = templatedata;
+                                }
+                                else
+                                {
+                                    eventdata = this.getProxifiedPathData(bapath);
+                                }
+                                  
+                                let allparams = [event, el, eventdata];
+                                let pieces = parseBareaFunctionCall(attr.value);
+                                allparams.push(...pieces.params);
+                                if (this.#methods[pieces.functionName]) {
+                                       this.#methods[pieces.functionName].apply(this, allparams);
+                                } else {
+                                    console.warn(`Handler function '${pieces.functionName}' not found.`);
+                                }
+                            });     
                         }
                         
                     }
@@ -844,63 +849,42 @@ class BareaApp
                 {
                     if (node.nodeValue.includes("{{") && node.nodeValue.includes("}}"))
                     {
-                        let content = node.nodeValue;
-                        let paths = instance.#getInterpolationPaths(node.nodeValue);
-                        let count=0;
-                        paths.forEach(t=>{
+                        let expressions = instance.#extractInterpolations(node.nodeValue);
+                        expressions.forEach(expr=>{
 
-                            let exprvalue="";
-                            const attribute_value_type = instance.#getExpressionType(t,DIR_INTERPOLATION);
+                            let path = expr.replaceAll('{','').replaceAll('}','').trim();
+                            const attribute_value_type = instance.#getExpressionType(path,DIR_INTERPOLATION);
                             if (attribute_value_type==='INVALID')
                             {
-                                console.error(`The ${DIR_INTERPOLATION} directive has an invalid (${t}).`);
+                                console.error(`The ${DIR_INTERPOLATION} directive has an invalid expression (${path}).`);
                                 return;
                             }
 
-                            let tracking_obj = instance.#createUiInterpolationTrackingObject(templateid,DIR_INTERPOLATION,t,null,"",node);
-                            
+                            let tracking_obj = instance.#createUiInterpolationTrackingObject(templateid,DIR_INTERPOLATION,path,null,"",node, expr);
                             if (attribute_value_type===EXPR_TYPE_COMPUTED){
-                                exprvalue=instance.#computedProperties[t].value;
+                                instance.#trackUI('global', tracking_obj);
+                                instance.#setInterpolation(tracking_obj);
                             }else if (attribute_value_type===EXPR_TYPE_ROOT_PATH || attribute_value_type===EXPR_TYPE_OBJREF || attribute_value_type===EXPR_TYPE_OBJREF_PATH)
                             {
+                                //Find data
                                 if (!templatedata){
-                                    let objpath = getLastBareaObjectName(t);
+                                    let objpath = getLastBareaObjectName(path);
                                     tracking_obj.data=instance.getProxifiedPathData(objpath);
                                 }else{
                                     tracking_obj.data = templatedata;
                                 }
-                                let interpolation_key = getLastBareaKeyName(t);
+
+                                //Find key
+                                tracking_obj.key="";
+                                let interpolation_key = getLastBareaKeyName(path);
                                 if (interpolation_key!=='root'){
                                     tracking_obj.key=interpolation_key;
-                                    exprvalue = tracking_obj.data[interpolation_key];
                                 }
-                                else
-                                {
-                                    exprvalue = tracking_obj.data;
-                                }     
-                               
+                                instance.#trackUI(path, tracking_obj);
+                                instance.#setInterpolation(tracking_obj);
                             }
-                            else if (attribute_value_type === INTERPOL_INDEX)
-                            {
-                                exprvalue = instance.#getClosestAttribute(node.parentElement, META_ARRAY_INDEX);
-                            }
-            
-                            if (!exprvalue)
-                                exprvalue ="";
-            
-                            if (typeof exprvalue === "object") 
-                                exprvalue = JSON.stringify(exprvalue)
-                          
-                            count++;
-                            const regex = new RegExp(`{{\\s*${t.replace(/[.[\]]/g, '\\$&')}\\s*}}`, 'g');
-                            content = content.replace(regex, exprvalue);        
                             
-
-                            instance.#trackUI(t, tracking_obj);
-                        });
-
-                        if (count>0)
-                            node.textContent = content;
+                        });    
                        
                     }
                 }
@@ -936,10 +920,10 @@ class BareaApp
         let id = this.#domDictionaryId++;
         return {id: id, isnew:true, templateid: templateid, directive:directive,  directivevalue:directivevalue, element: element, data:data, key:key, hashandler:false, handlername:"", inputtype:-1, parentelement : parentelement, templatemarkup : templatemarkup, templatetagname : templatetagname };
     }
-    #createUiInterpolationTrackingObject(templateid, directive, directivevalue, data, key,interpolated_node)
+    #createUiInterpolationTrackingObject(templateid, directive, directivevalue, data, key,interpolatednode, expression)
     {
         let id = this.#domDictionaryId++;
-        return {id: id, isnew:true, templateid: templateid, directive:directive,  directivevalue:directivevalue, element: null, data:data, key:key, hashandler:false, handlername:"", inputtype:-1, interpolated_node: interpolated_node  };
+        return {id: id, isnew:true, templateid: templateid, directive:directive,  directivevalue:directivevalue, element: null, data:data, key:key, hashandler:false, handlername:"", inputtype:-1, interpolatednode: interpolatednode, expression: expression  };
     }
 
     #trackUI(path, ui) 
@@ -958,7 +942,7 @@ class BareaApp
     
         this.#uiDependencies.get(path).forEach(ui => 
         {
-           if (DIR_GROUP_VISUAL_UPDATE.includes(ui.directive)){
+           if (DIR_GROUP_BOUND_TO_PATHS.includes(ui.directive)){
 
                 if (ui.hashandler){
                     this.#runBindHandler(VERB_SET_UI, ui, ui.handlername, ui.data, ui.key);
@@ -992,28 +976,38 @@ class BareaApp
         });
 
         this.#uiDependencies.get('global').forEach(ui => 
+        {
+            if (DIR_GROUP_MARKUP_GENERATION.includes(ui.directive)){
+
+                this.#renderTemplates(ui, path, changedvalue);  
+            }
+
+            if (DIR_GROUP_COMPUTED.includes(ui.directive))
             {
-               if (DIR_GROUP_MARKUP_GENERATION.includes(ui.directive)){
+                let principalpath = getPrincipalBareaPath(path);
+                if (!dependencyTracker.isDepencencyPath(principalpath, ui.directivevalue) && path !== ROOT_OBJECT)
+                    return;
 
-                    this.#renderTemplates(ui, path, changedvalue);  
-               }
+                this.#runComputedFunctions(ui);
+            }
 
-               if (DIR_GROUP_TRACK_AND_FORGET.includes(ui.directive)){
+            if (ui.directive === DIR_INTERPOLATION)
+            {
     
-                   this.#runComputedFunctions(ui);
-               }
+                let principalpath = getPrincipalBareaPath(path);
+                if (!dependencyTracker.isDepencencyPath(principalpath, ui.directivevalue) && path !== ROOT_OBJECT)
+                    return;
+                
+                this.#setInterpolation(ui);
+            }
                
-            });
+        });
     }
 
     #runComputedFunctions(ui)
     {
 
         let handlername = ui.handlername;
-        let truevalue = ui.directivevalue;
-        if (truevalue.includes('?'))
-            truevalue=truevalue.split('?')[1];
-
         let boundvalue = false;
         if (this.#computedProperties[handlername]) {
                 boundvalue = this.#computedProperties[handlername].value;
@@ -1027,42 +1021,18 @@ class BareaApp
             ui.element.style.display = boundvalue ? "" : "none";
         else if (ui.directive===DIR_IF) 
         {
-            if (boundvalue)
-            {
-                if (!ui.element.parentNode)
-                    if (ui.elementnextsibling)
-                        ui.parentelement.insertBefore(ui.element, ui.elementnextsibling);
-            }else
-            {
-                if (ui.element.parentNode)
-                {
-                    ui.elementnextsibling = ui.element.nextSibling;
-                    ui.element.remove();
-                }   
-            }
+          this.#setComputedIf(ui, boundvalue);
         }
         else if (ui.directive===DIR_CLASS_IF) 
         {
-           let classnames = truevalue.split(/[\s,]+/);
+            let truevalue = ui.directivevalue;
+            if (truevalue.includes('?'))
+            truevalue=truevalue.split('?')[1];
 
-            // Add classes if condition is true and remove if false
-            if (boundvalue) {
-                classnames.forEach(className => {
-                    if (!ui.element.classList.contains(className)) {
-                        ui.element.classList.add(className); // Add class if not already present
-                    }
-                });
-            } else {
-                classnames.forEach(className => {
-                    if (ui.element.classList.contains(className)) {
-                        ui.element.classList.remove(className); // Remove class if present
-                    }
-                });
-            }
+          this.#setComputedClassIf(ui, boundvalue, truevalue);
+
         }    
               
-    
-
     }
 
     #runBindHandler(verb, ui, handlername, data, key)
@@ -1071,13 +1041,53 @@ class BareaApp
         if (!ui.handlerpieces)
             ui.handlerpieces = parseBareaFunctionCall(handlername);
 
-        let allparams = [verb, ui.element, data];
+        let allparams = [verb, ui.element, data, key];
         allparams.push(...ui.handlerpieces.params);
 
         if (this.#methods[ui.handlerpieces.functionName]) {
             this.#methods[ui.handlerpieces.functionName].apply(this, allparams);
         } else {
             console.warn(`Handler function '${ui.handlerpieces.functionName}' not found.`);
+        }
+    }
+
+    #setComputedClassIf(ui, boundvalue, truevalue) 
+    {
+        let classnames = truevalue.split(/[\s,]+/);
+
+        // Add classes if condition is true and remove if false
+        if (boundvalue) {
+            classnames.forEach(className => {
+                if (!ui.element.classList.contains(className)) {
+                     ui.element.classList.add(className); // Add class if not already present
+                }
+                });
+        } 
+        else 
+        {
+             classnames.forEach(className => {
+                 if (ui.element.classList.contains(className)) {
+                    ui.element.classList.remove(className); // Remove class if present
+                }
+            });
+        }
+    }
+
+    #setComputedIf(ui, boundvalue) 
+    {
+        if (boundvalue)
+        {
+            if (!ui.element.parentNode)
+                 if (ui.elementnextsibling)
+                    ui.parentelement.insertBefore(ui.element, ui.elementnextsibling);
+        }
+        else
+        {
+            if (ui.element.parentNode)
+            {
+                ui.elementnextsibling = ui.element.nextSibling;
+                ui.element.remove();
+            }   
         }
     }
 
@@ -1132,6 +1142,48 @@ class BareaApp
             return;
 
         element.href = data[key];
+    }
+    #setInterpolation(ui)
+    {
+ 
+        let interpol_value = "";
+        const attribute_value_type = this.#getExpressionType(ui.directivevalue,DIR_INTERPOLATION);
+        if (attribute_value_type==='INVALID')
+        {
+                console.error(`The ${DIR_INTERPOLATION} directive has an invalid expression (${expr}).`);
+                return;
+        }
+
+        if (attribute_value_type===EXPR_TYPE_COMPUTED){
+            interpol_value=this.#computedProperties[ui.directivevalue].value;
+        }else if (attribute_value_type===EXPR_TYPE_ROOT_PATH || attribute_value_type===EXPR_TYPE_OBJREF || attribute_value_type===EXPR_TYPE_OBJREF_PATH)
+        {
+            if (ui.key && ui.data){
+                interpol_value = ui.data[ui.key];
+            }else{
+                if (ui.data)
+                    interpol_value = ui.data;
+            } 
+        }
+        else if (attribute_value_type === INTERPOL_INDEX)
+        {
+            interpol_value = this.#getClosestAttribute(node.parentElement, META_ARRAY_INDEX);
+        }
+
+        if (!interpol_value)
+            interpol_value ="";
+
+        if (typeof interpol_value === "object") 
+            interpol_value = JSON.stringify(interpol_value)
+      
+   
+        //const regex = new RegExp(`{{\\s*${ui.directivavalue.replace(/[.[\]]/g, '\\$&')}\\s*}}`, 'g');
+        //content = content.replace(regex, exprvalue);      
+        let content = ui.interpolatednode.textContent;
+        content = content.replaceAll(ui.expression, interpol_value);
+        ui.interpolatednode.textContent = content;
+        
+        
     }
 
     
@@ -2115,6 +2167,13 @@ class BareaApp
     
         return matches;
     }
+
+    #extractInterpolations(text) {
+        const regex = /\{\{\s*.*?\s*\}\}/g;
+        return text.match(regex) || [];
+    }
+
+    
 
 
     #isPrimitive(value)
