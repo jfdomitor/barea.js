@@ -279,9 +279,9 @@ class BareaApp
 
             let noproxy = this.#appDataProxyMap.get(target);
             if (noproxy)
-                this.#uiDependencyTracker.notifyUI(noproxy, key, value, path);
+                this.#uiDependencyTracker.notify(noproxy, key, value, path);
             else
-                this.#uiDependencyTracker.notifyUI(target, key, value, path);
+                this.#uiDependencyTracker.notify(target, key, value, path);
 
         }, this.#appData);
 
@@ -608,7 +608,7 @@ class BareaApp
                         }
                         
                         
-                        this.#uiDependencyTracker.trackUI(attr.value, tracking_obj);
+                        this.#uiDependencyTracker.track(attr.value, tracking_obj);
 
                             if (tracking_obj.directive===DIR_BIND)
                             {
@@ -716,7 +716,7 @@ class BareaApp
                         if (attribute_value_type === EXPR_TYPE_COMPUTED)
                         {
                             tracking_obj.handlername=condition;
-                            this.#uiDependencyTracker.trackUI('global', tracking_obj);
+                            this.#uiDependencyTracker.track('global', tracking_obj);
                             this.#runComputedFunction(tracking_obj);
                         }
                         else if (attribute_value_type === EXPR_TYPE_ROOT_EXPR){
@@ -741,7 +741,7 @@ class BareaApp
                             this.#computedProperties[handlername] = this.#getNewComputedProperty(boolRootFunc,handlername);
                             this.#computedKeys.push(handlername);
                             tracking_obj.handlername=handlername;
-                            this.#uiDependencyTracker.trackUI('global', tracking_obj);
+                            this.#uiDependencyTracker.track('global', tracking_obj);
                             this.#runComputedFunction(tracking_obj);
 
                         }
@@ -767,7 +767,7 @@ class BareaApp
                             this.#computedProperties[handlername] = this.#getNewComputedProperty(boolObjFunc,handlername);
                             this.#computedKeys.push(handlername);
                             tracking_obj.handlername=handlername;
-                            this.#uiDependencyTracker.trackUI('global', tracking_obj);
+                            this.#uiDependencyTracker.track('global', tracking_obj);
                             this.#runComputedFunction(tracking_obj);
 
                         }  
@@ -797,7 +797,7 @@ class BareaApp
                             this.#computedProperties[handlername] = this.#getNewComputedProperty(boolMixedFunc,handlername);
                             this.#computedKeys.push(handlername);
                             tracking_obj.handlername=handlername;
-                            this.#uiDependencyTracker.trackUI('global', tracking_obj);
+                            this.#uiDependencyTracker.track('global', tracking_obj);
                             this.#runComputedFunction(tracking_obj);
                         
                         }
@@ -868,7 +868,7 @@ class BareaApp
                             .replace(/(\S)\s{2,}(\S)/g, '$1 $2'); // Reduce multiple spaces to one inside text nodes
         
                         const tracking_obj = this.#createUiTemplateTrackingObject(templateid,el,attr.name,attr.value,null,"", el.parentElement,templateHtml, el.localName);
-                        this.#uiDependencyTracker.trackUI('global', tracking_obj);
+                        this.#uiDependencyTracker.track('global', tracking_obj);
                        
                         el.remove();
 
@@ -938,18 +938,18 @@ class BareaApp
                             {
                                 if (tracking_obj.iscomputed)
                                 {
-                                    instance.#uiDependencyTracker.trackUI('global', tracking_obj);
+                                    instance.#uiDependencyTracker.track('global', tracking_obj);
                                 }
                                 else
                                 {
-                                    instance.#uiDependencyTracker.trackUI(tracking_obj.directivevalue, tracking_obj);
+                                    instance.#uiDependencyTracker.track(tracking_obj.directivevalue, tracking_obj);
                                 }
                                 instance.#setInterpolation(tracking_obj);
 
                             }
                             else
                             {
-                                instance.#uiDependencyTracker.trackUI('global', tracking_obj);
+                                instance.#uiDependencyTracker.track('global', tracking_obj);
                                 instance.#setInterpolation(tracking_obj);
                             }
                         }
@@ -1827,7 +1827,7 @@ Unshift problem
                 return this.#dependencies;
             } 
 
-            trackUI(trackingtype, ui) 
+            track(trackingtype, ui) 
             {
                 let depKey="";
                 if (ui.data && trackingtype!== 'global')
@@ -1846,7 +1846,7 @@ Unshift problem
                 this.#dependencies.get(depKey).add(ui);
             }
 
-            notifyUI(reasonobj, reasonkey, reasonvalue, path) 
+            notify(reasonobj, reasonkey, reasonvalue, path) 
             {
                 let depKey = this.#getObjectId(reasonobj) + ":" + reasonkey;
                 let workset = this.#dependencies.get(depKey);
