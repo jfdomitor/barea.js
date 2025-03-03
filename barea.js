@@ -277,13 +277,18 @@ class BareaApp
             if (log.active)
                 console.log(log.name, path, value, key, target);
 
-            this.#notifyUI(path, value);
+            let noproxy = this.#appDataProxyMap.get(target);
+            if (noproxy)
+                this.#uiDependencyTracker.notifyUI(noproxy, key, value, path);
+            else
+                this.#uiDependencyTracker.notifyUI(target, key, value, path);
 
         }, this.#appData);
 
         this.#appDataProxy = proxy;
   
         //Important: Always directly after proxification
+        //Track UI
         this.#detectElements();
       
 
@@ -603,7 +608,7 @@ class BareaApp
                         }
                         
                         
-                        this.#trackUI(attr.value, tracking_obj);
+                        this.#uiDependencyTracker.trackUI(attr.value, tracking_obj);
 
                             if (tracking_obj.directive===DIR_BIND)
                             {
@@ -711,7 +716,7 @@ class BareaApp
                         if (attribute_value_type === EXPR_TYPE_COMPUTED)
                         {
                             tracking_obj.handlername=condition;
-                            this.#trackUI('global', tracking_obj);
+                            this.#uiDependencyTracker.trackUI('global', tracking_obj);
                             this.#runComputedFunction(tracking_obj);
                         }
                         else if (attribute_value_type === EXPR_TYPE_ROOT_EXPR){
@@ -736,7 +741,7 @@ class BareaApp
                             this.#computedProperties[handlername] = this.#getNewComputedProperty(boolRootFunc,handlername, this);
                             this.#computedKeys.push(handlername);
                             tracking_obj.handlername=handlername;
-                            this.#trackUI('global', tracking_obj);
+                            this.#uiDependencyTracker.trackUI('global', tracking_obj);
                             this.#runComputedFunction(tracking_obj);
 
                         }
@@ -762,7 +767,7 @@ class BareaApp
                             this.#computedProperties[handlername] = this.#getNewComputedProperty(boolObjFunc,handlername, this);
                             this.#computedKeys.push(handlername);
                             tracking_obj.handlername=handlername;
-                            this.#trackUI('global', tracking_obj);
+                            this.#uiDependencyTracker.trackUI('global', tracking_obj);
                             this.#runComputedFunction(tracking_obj);
 
                         }  
@@ -792,7 +797,7 @@ class BareaApp
                             this.#computedProperties[handlername] = this.#getNewComputedProperty(boolMixedFunc,handlername, this);
                             this.#computedKeys.push(handlername);
                             tracking_obj.handlername=handlername;
-                            this.#trackUI('global', tracking_obj);
+                            this.#uiDependencyTracker.trackUI('global', tracking_obj);
                             this.#runComputedFunction(tracking_obj);
                         
                         }
@@ -863,7 +868,7 @@ class BareaApp
                             .replace(/(\S)\s{2,}(\S)/g, '$1 $2'); // Reduce multiple spaces to one inside text nodes
         
                         const tracking_obj = this.#createUiTemplateTrackingObject(templateid,el,attr.name,attr.value,null,"", el.parentElement,templateHtml, el.localName);
-                        this.#trackUI('global', tracking_obj);
+                        this.#uiDependencyTracker.trackUI('global', tracking_obj);
                        
                         el.remove();
 
@@ -933,18 +938,18 @@ class BareaApp
                             {
                                 if (tracking_obj.iscomputed)
                                 {
-                                    instance.#trackUI('global', tracking_obj);
+                                    instance.#uiDependencyTracker.trackUI('global', tracking_obj);
                                 }
                                 else
                                 {
-                                    instance.#trackUI(tracking_obj.directivevalue, tracking_obj);
+                                    instance.#uiDependencyTracker.trackUI(tracking_obj.directivevalue, tracking_obj);
                                 }
                                 instance.#setInterpolation(tracking_obj);
 
                             }
                             else
                             {
-                                instance.#trackUI('global', tracking_obj);
+                                instance.#uiDependencyTracker.trackUI('global', tracking_obj);
                                 instance.#setInterpolation(tracking_obj);
                             }
                         }
@@ -967,7 +972,7 @@ class BareaApp
         let log = this.#getConsoleLog(4);
         if (log.active){length
             console.log('UI detection (tracking)');
-            this.#uiDependencies.forEach((value, key) => {
+            this.#uiDependencyTracker.getAllDependencies().forEach((value, key) => {
                 console.log(key, value);
             });
         }
@@ -991,29 +996,11 @@ class BareaApp
         return {id: id, isnew:true, templateid: templateid, directive:directive,  directivevalue:directivevalue, element: null, data:data, key:key, hashandler:false, handlername:"", inputtype:-1, interpolatednode: interpolatednode, expression: expression, nodetemplate:nodetemplate  };
     }
 
-    #trackUI(path, ui) 
+    #handleUITrackerNofify = (reasonobj, reasonkey, reasonvalue, path, resultset) =>
     {
-        if (!this.#uiDependencies.has(path)) 
+        resultset.forEach(ui => 
         {
-            this.#uiDependencies.set(path, new Set());
-        }
-        this.#uiDependencies.get(path).add(ui);
-    }
-
-    #handleUITrackerNofify = function(path, ui) 
-    {
-     
-    }
-
-    
-    #notifyUI(path, changedvalue) 
-    {
-        let worklist = this.#uiDependencies.get(path);
-        if (worklist)
-        {
-            worklist.forEach(ui => 
-            {
-                if (DIR_GROUP_BOUND_TO_PATHS.includes(ui.directive)){
+            if (DIR_GROUP_BOUND_TO_PATHS.includes(ui.directive)){
 
                     if (ui.hashandler){
                         this.#runBindHandler(VERB_SET_UI, ui);
@@ -1042,52 +1029,34 @@ class BareaApp
                         this.#setSrc(ui);
                     }
                     else if (ui.directive===DIR_INTERPOLATION){
+
+                        //For performance, if a textnode contains only one interpolation and that is based on a computed value
+                        //textnodes based on a computed value or if there are more than two expressions then they are tracked with path = global
+                        // let principalpath = getPrincipalBareaPath(path);
+                        // if (!this.dependencyTracker.isDepencencyPath(principalpath, ui.directivevalue) && path !== ROOT_OBJECT)
+                        //     return;
+
                         this.#setInterpolation(ui);
-                    }
+                    }    
                     
-                }
-           
-            });
-        }
+            }
+            else if (DIR_GROUP_MARKUP_GENERATION.includes(ui.directive)){
 
-        //Some directives are global = always run
-        let globalworklist = this.#uiDependencies.get('global');
-        if (globalworklist){
-            globalworklist.forEach(ui => 
+                this.#renderTemplates(ui, path, reasonvalue);  
+            }
+            else if (DIR_GROUP_COMPUTED.includes(ui.directive))
             {
-                if (DIR_GROUP_MARKUP_GENERATION.includes(ui.directive)){
-
-                    this.#renderTemplates(ui, path, changedvalue);  
-                }
-
-                if (DIR_GROUP_COMPUTED.includes(ui.directive))
-                {
                     let principalpath = getPrincipalBareaPath(path);
                     if (!this.dependencyTracker.isDepencencyPath(principalpath, ui.handlername) && path !== ROOT_OBJECT)
                         return;
 
                     this.#runComputedFunction(ui);
-                }
-
-                if (ui.directive === DIR_INTERPOLATION)
-                {
-        
-                    if (ui.nodeexpressions.length === 1)
-                    {
-                        //For performance, if a textnode contains only one interpolation and that is based on a computed value
-                        //textnodes based on a computed value or if there are more than two expressions then they are tracked with path = global
-                        let principalpath = getPrincipalBareaPath(path);
-                        if (!dependencyTracker.isDepencencyPath(principalpath, ui.directivevalue) && path !== ROOT_OBJECT)
-                            return;
-                    }
-
-                    this.#setInterpolation(ui);
-                }
-               
-            });
-        }
+            }
+        });
     }
 
+    
+  
     #runComputedFunction(ui)
     {
 
@@ -1808,7 +1777,7 @@ Unshift problem
 
         class UserInterfaceTracker
         {
-            #dependencies = new WeakMap();
+            #dependencies = new Map();
             #objectReference = new WeakMap();
             #notifycallback = null;
             #objectCounter=0;
@@ -1829,12 +1798,17 @@ Unshift problem
                 return this.#objectReference.get(obj);
             }
 
-            trackUI(ui) 
+            getAllDependencies()
+            {
+                return this.#dependencies;
+            } 
+
+            trackUI(trackingtype, ui) 
             {
                 let depKey="";
-                if (ui.data)
+                if (ui.data && trackingtype!== 'global')
                 {
-                    depKey = this.#getObjectId(object) + ":" + ui.key; 
+                    depKey = this.#getObjectId(ui.data) + ":" + ui.key; 
 
                 }else{
 
@@ -1843,25 +1817,36 @@ Unshift problem
 
                 if (!this.#dependencies.has(depKey)) 
                 {
-                    this.#dependencies.set(depKey, new WeakSet());
+                    this.#dependencies.set(depKey, new Set());
                 }
                 this.#dependencies.get(depKey).add(ui);
             }
 
-            notifyUI(reasonobj, reasonkey, reasonvalue) 
+            notifyUI(reasonobj, reasonkey, reasonvalue, path) 
             {
-                let depKey = getObjectId(reasonobj) + ":" + reasonkey;
+                let depKey = this.#getObjectId(reasonobj) + ":" + reasonkey;
                 let workset = this.#dependencies.get(depKey);
                 if (!workset)
-                    workset= new WeakSet();
+                    workset= new Set();
 
-                let gloablset = this.#dependencies.get('global');
-                if (!gloablset)
-                    gloablset= new WeakSet();
+                //If we interpolated an object belonging
+                let obj_interpolations= new Set();
+                if (reasonkey !== "")
+                {
+                    depKey = this.#getObjectId(reasonobj) + ":"
+                    obj_interpolations = this.#dependencies.get(depKey);
+                    if (!obj_interpolations)
+                        obj_interpolations= new Set();
+                }
 
-                let resultset = new WeakSet(...workset, ...gloablset);
+                depKey="global";
+                let globalset = this.#dependencies.get(depKey);
+                if (!globalset)
+                    globalset= new Set();
 
-                this.#notifycallback(reasonobj, reasonkey, reasonvalue, resultset);
+                let resultset = new Set([...workset, ...obj_interpolations, ...globalset]);
+
+                this.#notifycallback(reasonobj, reasonkey, reasonvalue, path, resultset);
             }
 
            
