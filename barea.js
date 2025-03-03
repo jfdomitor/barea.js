@@ -1833,7 +1833,7 @@ Unshift problem
                 let obj_interpolations= new Set();
                 if (reasonkey !== "")
                 {
-                    depKey = this.#getObjectId(reasonobj) + ":"
+                    depKey = this.#getObjectId(reasonobj) + ":";
                     obj_interpolations = this.#dependencies.get(depKey);
                     if (!obj_interpolations)
                         obj_interpolations= new Set();
