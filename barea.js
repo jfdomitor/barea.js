@@ -1309,9 +1309,11 @@ class BareaApp
                   //Important: Only render on array operations like pop, push, unshift etc if bound directly with data path
                 if (!(Array.isArray(changedvalue) || (this.#isPrimitive(changedvalue) && ARRAY_FUNCTIONS.includes(changedvalue))))
                     return;
-                     
+                   
                 foreacharray = this.getProxifiedPathData(datapath); 
             }
+
+          
             
             if (!Array.isArray(foreacharray)){
                 console.error('Could not get array in renderTemplates, should not happen if there is a god');
