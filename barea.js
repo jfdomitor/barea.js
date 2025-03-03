@@ -169,14 +169,22 @@ class BareaApp
     #enableInterpolation = true;
     #enableHideUnloaded=false;
     #enableComputedProperties=false;
-    #uiDependencies=new Map();
+
+    //UI
+    #uiDependencyTracker=null;
+
+    //Computed dependency tracker
+    dependencyTracker =  null;
 
 
     constructor(enableInternalId) 
     {
+
         if (enableInternalId)
             this.#enableBareaId=enableInternalId;
 
+        this.dependencyTracker = this.#getDependencyTracker();
+        this.#uiDependencyTracker = this.#getUserInterfaceTracker(this.#handleUITrackerNofify);
         this.#setConsoleLogs(); 
     }
 
@@ -229,7 +237,7 @@ class BareaApp
             Object.keys(content.computed).forEach(key => {
                 if (typeof content.computed[key] === "function") {
                     this.#enableComputedProperties=true;
-                    this.#computedProperties[key] = new BareaComputedProperty(content.computed[key], key, this);
+                    this.#computedProperties[key] = this.#getNewComputedProperty(content.computed[key], key, this);
                     this.#computedKeys.push(key);
                 }
             });
@@ -405,14 +413,14 @@ class BareaApp
                     //They will only be tracked if the computed function is run
                     //The function activates tracking
                     if(typeof value === "function" && ARRAY_FUNCTIONS.includes(value.name))
-                        dependencyTracker.track(newPath, value.name);
+                        this.dependencyTracker.track(newPath, value.name);
                     else
-                        dependencyTracker.track(newPath, null);
+                        this.dependencyTracker.track(newPath, null);
 
                     if (Array.isArray(target))
                     {
                         //These won't be detected otherwise
-                        ARRAY_FUNCTIONS.forEach(f=>{ dependencyTracker.track(currentpath, f);});
+                        ARRAY_FUNCTIONS.forEach(f=>{ this.dependencyTracker.track(currentpath, f);});
                     }
                 }
                
@@ -447,7 +455,7 @@ class BareaApp
                                     const result = Array.prototype[value.name].apply(target, args);
 
                                     if (this.#enableComputedProperties)
-                                        dependencyTracker.notify(currentpath, value.name);
+                                        this.dependencyTracker.notify(currentpath, value.name);
 
                                     callback(currentpath, value.name, key, target);
 
@@ -480,9 +488,9 @@ class BareaApp
                 if (this.#enableComputedProperties)
                 {
                     if(typeof value === "function"  && ARRAY_FUNCTIONS.includes(value.name))
-                        dependencyTracker.notify(newPath, value.name);
+                        this.dependencyTracker.notify(newPath, value.name);
                     else
-                        dependencyTracker.notify(newPath, null);
+                        this.dependencyTracker.notify(newPath, null);
 
                 }
                     
@@ -502,7 +510,7 @@ class BareaApp
     #detectElements(tag=this.#appElement, templateid=-1, templatedata, templatekey)
     {
         //Delete dynamic functions that was created along with the templates
-        dependencyTracker.deleteDynamicTemplateFunctions();
+        this.dependencyTracker.deleteDynamicTemplateFunctions();
 
         
         //Collect children of the template (this is the user generated template, that should be replaced)
@@ -725,7 +733,7 @@ class BareaApp
                             }
 
                             this.#enableComputedProperties=true;
-                            this.#computedProperties[handlername] = new BareaComputedProperty(boolRootFunc,handlername, this);
+                            this.#computedProperties[handlername] = this.#getNewComputedProperty(boolRootFunc,handlername, this);
                             this.#computedKeys.push(handlername);
                             tracking_obj.handlername=handlername;
                             this.#trackUI('global', tracking_obj);
@@ -751,7 +759,7 @@ class BareaApp
                             }
 
                             this.#enableComputedProperties=true;
-                            this.#computedProperties[handlername] = new BareaComputedProperty(boolObjFunc,handlername, this);
+                            this.#computedProperties[handlername] = this.#getNewComputedProperty(boolObjFunc,handlername, this);
                             this.#computedKeys.push(handlername);
                             tracking_obj.handlername=handlername;
                             this.#trackUI('global', tracking_obj);
@@ -781,7 +789,7 @@ class BareaApp
                             }
 
                             this.#enableComputedProperties=true;
-                            this.#computedProperties[handlername] = new BareaComputedProperty(boolMixedFunc,handlername, this);
+                            this.#computedProperties[handlername] = this.#getNewComputedProperty(boolMixedFunc,handlername, this);
                             this.#computedKeys.push(handlername);
                             tracking_obj.handlername=handlername;
                             this.#trackUI('global', tracking_obj);
@@ -991,6 +999,12 @@ class BareaApp
         }
         this.#uiDependencies.get(path).add(ui);
     }
+
+    #handleUITrackerNofify = function(path, ui) 
+    {
+     
+    }
+
     
     #notifyUI(path, changedvalue) 
     {
@@ -1049,7 +1063,7 @@ class BareaApp
                 if (DIR_GROUP_COMPUTED.includes(ui.directive))
                 {
                     let principalpath = getPrincipalBareaPath(path);
-                    if (!dependencyTracker.isDepencencyPath(principalpath, ui.handlername) && path !== ROOT_OBJECT)
+                    if (!this.dependencyTracker.isDepencencyPath(principalpath, ui.handlername) && path !== ROOT_OBJECT)
                         return;
 
                     this.#runComputedFunction(ui);
@@ -1304,7 +1318,7 @@ class BareaApp
                 //This template is based on a computed array
                 //If the incoming path is not a dependency of the computed property, then return
                 let principalpath = getPrincipalBareaPath(path);
-                if (!dependencyTracker.isDepencencyPath(principalpath, datapath) && path !== ROOT_OBJECT)
+                if (!this.dependencyTracker.isDepencencyPath(principalpath, datapath) && path !== ROOT_OBJECT)
                     return;
             }
             else
@@ -1579,10 +1593,9 @@ class BareaApp
             document.querySelectorAll(".ba-cloak").forEach(el => el.classList.remove("ba-cloak"));
        }
     }
-   
-}
 
-/*
+
+    /*
 
 Attempt to get value (if dirty)
 - Opens up for tracking
@@ -1604,171 +1617,262 @@ Unshift problem
 - Cached value is fetched
 
 */
-class BareaComputedProperty 
-{
-    constructor(getter, key, barea) {
-      this.name=key;
-      this.getter = getter;
-      this.dirty = true;
-      this.dependencyPaths = new Set();
-      this.barea = barea;
-      this.setDirty = (principalpath) => {
-        this.dirty = true;
-      };
-    }
-  
-    track(dep, principalpath) {
-      dep.addSubscriber(this.name, this.setDirty); //The computed property tells that tracker: Hi i'm a new subscriber
-      this.dependencyPaths.add(principalpath);
-    }
-  
-    get value() {
-      if (this.dirty) 
-      {
-        dependencyTracker.start(this);
-        this._value = this.getter.call(this.barea);
-        dependencyTracker.stop();
-        this.dirty = false;
-      }
-      return this._value;
-    }
-  }
-
-  class BareaDependencyTracker 
-  {
-    constructor() {
-      this.activeComputed = null;
-      this.dependencies = new Map();
-    }
-  
-    start(computed) {
-      this.activeComputed = computed;
-    }
-  
-    stop() {
-      this.activeComputed = null;
-    }
-
-    deleteDynamicTemplateFunctions()
+    #getNewComputedProperty(getter, key, barea)
     {
-        this.dependencies.forEach((childMap) => {
-            childMap.subscribers.forEach((value, key) => {
-              if (key.includes(META_DYN_TEMPLATE_FUNC_PREFIX)) {
-                childMap.subscribers.delete(key); 
-                if (window[key]) {
-                    delete window[key];
-                }
-              }
-            });
-          });
-    }
-
-    isDepencencyPath(path, funcname)
-    {
-        if (!path)
-            return false;
-        if (!funcname)
-            return false;
-
-        if (!this.dependencies.has(path))
-            return false;
-
-        for (let childKey of this.dependencies.keys()) 
+        class BareaComputedProperty
         {
-            if (childKey!==path)
-                continue;
-
-            let childMap = this.dependencies.get(childKey); 
+            constructor(getter, key, barea) {
+            this.name=key;
+            this.getter = getter;
+            this.dirty = true;
+            this.dependencyPaths = new Set();
+            this.barea = barea;
+            this.setDirty = (principalpath) => {
+                this.dirty = true;
+            };
+            }
         
-            for (let key of childMap.subscribers.keys()) {
-                if (key===funcname) {
-                    return true;
+            track(dep, principalpath) {
+            dep.addSubscriber(this.name, this.setDirty); //The computed property tells that tracker: Hi i'm a new subscriber
+            this.dependencyPaths.add(principalpath);
+            }
+        
+            get value() 
+            {
+                if (this.dirty) 
+                {
+                    barea.dependencyTracker.start(this);
+                    this._value = this.getter.call(this.barea);
+                    barea.dependencyTracker.stop();
+                    this.dirty = false;
                 }
+                return this._value;
             }
         }
 
-        return false;
-    }
-  
-    //Called on proxy change get
-    //If a computed func is active on the singelton tracker
-    //Look for a dependency or creates one for the computed func
-    track(objpath, funcname) 
-    {
-        if (!objpath)
-            return;
-
-        let principalpath = getPrincipalBareaPath(objpath);
-        if (!principalpath)
-            return;
-
-        if (principalpath==ROOT_OBJECT)
-            return;
-
-        if (funcname)
-            principalpath = principalpath+'.'+funcname.toLowerCase();
-
-      if (this.activeComputed) {
-          let dep = this.#getDependency(principalpath);
-          this.activeComputed.track(dep, principalpath);
-      }
+        return new BareaComputedProperty(getter, key, barea);
     }
 
-    //Called on proxy change set
-    //Finds a dependency and notifies all subscribers
-    notify(objpath, funcname) 
+    #getDependencyTracker()
     {
-        if (!objpath)
-            return;
+        let instance;
 
-        let principalpath = getPrincipalBareaPath(objpath);
-        if (!principalpath)
-            return;
+        class  DependencyTracker
+        {
+            constructor() 
+            {
+                if (instance)
+                    return instance;
 
-        if (principalpath==ROOT_OBJECT)
-            return;
+                this.activeComputed = null;
+                this.dependencies = new Map();
+                instance = this;
+            }
+        
+            start(computed) {
+                this.activeComputed = computed;
+            }
+        
+            stop() {
+                this.activeComputed = null;
+            }
 
-        if (funcname)
-            principalpath = principalpath+'.'+funcname.toLowerCase();
-
-       let dep = this.#getDependency(principalpath);
-        dep.notify(principalpath);
-    }
-
-    #getDependency(principalpath) 
-    {
-        let dep = this.dependencies.get(principalpath);
-        if (!dep) {
-            dep = this.#createDependency(principalpath);
-
-            this.dependencies.set(principalpath, dep);
-        }
-
-        return dep;
-    }
-
-    #createDependency(principalpath) 
-    {
-        let subscribers = new Map();
-        return {
-            subscribers : subscribers, 
-            addSubscriber(name, set_dirty_func) {
-                if (!subscribers.has(name))
-                {
-                    subscribers.set(name, set_dirty_func);
-                    //console.log(`${name} is subscribing to path: ${principalpath}`);
-                }
-            },
-            notify(principalpath) { 
-                subscribers.forEach((set_dirty_func, name) => {
-                    set_dirty_func(principalpath); 
-                    //console.log(`Notified ${name} with path: ${principalpath}`);
+            deleteDynamicTemplateFunctions()
+            {
+                this.dependencies.forEach((childMap) => {
+                    childMap.subscribers.forEach((value, key) => {
+                    if (key.includes(META_DYN_TEMPLATE_FUNC_PREFIX)) {
+                        childMap.subscribers.delete(key); 
+                        if (window[key]) {
+                            delete window[key];
+                        }
+                    }
+                    });
                 });
             }
-        };
+
+            isDepencencyPath(path, funcname)
+            {
+                if (!path)
+                    return false;
+                if (!funcname)
+                    return false;
+
+                if (!this.dependencies.has(path))
+                    return false;
+
+                for (let childKey of this.dependencies.keys()) 
+                {
+                    if (childKey!==path)
+                        continue;
+
+                    let childMap = this.dependencies.get(childKey); 
+                
+                    for (let key of childMap.subscribers.keys()) {
+                        if (key===funcname) {
+                            return true;
+                        }
+                    }
+                }
+
+                return false;
+            }
+        
+            //Called on proxy change get
+            //If a computed func is active on the singelton tracker
+            //Look for a dependency or creates one for the computed func
+            track(objpath, funcname) 
+            {
+                if (!objpath)
+                    return;
+
+                let principalpath = getPrincipalBareaPath(objpath);
+                if (!principalpath)
+                    return;
+
+                if (principalpath==ROOT_OBJECT)
+                    return;
+
+                if (funcname)
+                    principalpath = principalpath+'.'+funcname.toLowerCase();
+
+                if (this.activeComputed) {
+                    let dep = this.#getDependency(principalpath);
+                    this.activeComputed.track(dep, principalpath);
+                }
+            }
+
+            //Called on proxy change set
+            //Finds a dependency and notifies all subscribers
+            notify(objpath, funcname) 
+            {
+                if (!objpath)
+                    return;
+
+                let principalpath = getPrincipalBareaPath(objpath);
+                if (!principalpath)
+                    return;
+
+                if (principalpath==ROOT_OBJECT)
+                    return;
+
+                if (funcname)
+                    principalpath = principalpath+'.'+funcname.toLowerCase();
+
+                let dep = this.#getDependency(principalpath);
+                    dep.notify(principalpath);
+            }
+
+            #getDependency(principalpath) 
+            {
+                let dep = this.dependencies.get(principalpath);
+                if (!dep) {
+                    dep = this.#createDependency(principalpath);
+
+                    this.dependencies.set(principalpath, dep);
+                }
+
+                return dep;
+            }
+
+            #createDependency(principalpath) 
+            {
+                let subscribers = new Map();
+                return {
+                    subscribers : subscribers, 
+                    addSubscriber(name, set_dirty_func) {
+                        if (!subscribers.has(name))
+                        {
+                            subscribers.set(name, set_dirty_func);
+                            //console.log(`${name} is subscribing to path: ${principalpath}`);
+                        }
+                    },
+                    notify(principalpath) { 
+                        subscribers.forEach((set_dirty_func, name) => {
+                            set_dirty_func(principalpath); 
+                            //console.log(`Notified ${name} with path: ${principalpath}`);
+                        });
+                    }
+                };
+            }
+
+        }
+
+        return new DependencyTracker();
+    
     }
 
-  }
-  
-//Dependency tracker for computed properties
-const dependencyTracker = new BareaDependencyTracker(); 
+    #getUserInterfaceTracker(notifycallback)
+    {
+        let instance;
+
+        class UserInterfaceTracker
+        {
+            #dependencies = new WeakMap();
+            #objectReference = new WeakMap();
+            #notifycallback = null;
+            #objectCounter=0;
+
+            constructor(notifycallback) 
+            {
+                if (instance)
+                    return instance;
+
+                this.#notifycallback = notifycallback;
+                instance = this;
+            }
+
+            #getObjectId(obj) {
+                if (!this.#objectReference.has(obj)) {
+                    this.#objectReference.set(obj, ++this.#objectCounter); // Assign a new ID
+                }
+                return this.#objectReference.get(obj);
+            }
+
+            trackUI(ui) 
+            {
+                let depKey="";
+                if (ui.data)
+                {
+                    depKey = this.#getObjectId(object) + ":" + ui.key; 
+
+                }else{
+
+                    depKey="global";
+                }
+
+                if (!this.#dependencies.has(depKey)) 
+                {
+                    this.#dependencies.set(depKey, new WeakSet());
+                }
+                this.#dependencies.get(depKey).add(ui);
+            }
+
+            notifyUI(reasonobj, reasonkey, reasonvalue) 
+            {
+                let depKey = getObjectId(reasonobj) + ":" + reasonkey;
+                let workset = this.#dependencies.get(depKey);
+                if (!workset)
+                    workset= new WeakSet();
+
+                let gloablset = this.#dependencies.get('global');
+                if (!gloablset)
+                    gloablset= new WeakSet();
+
+                let resultset = new WeakSet(...workset, ...gloablset);
+
+                this.#notifycallback(reasonobj, reasonkey, reasonvalue, resultset);
+            }
+
+           
+
+        }
+
+        return new UserInterfaceTracker(notifycallback);
+    
+    }
+
+}
+
+
+
