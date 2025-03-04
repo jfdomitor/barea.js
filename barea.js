@@ -955,7 +955,7 @@ class BareaApp
                             tracking_obj.nodeexpressions = nodeexpressions;
                             if (nodeexpressions.length===1)
                             {
-                                if (tracking_obj.iscomputed)
+                                if (tracking_obj.iscomputed || !tracking_obj.key)
                                 {
                                     instance.#uiDependencyTracker.track('global', tracking_obj);
                                 }
@@ -1388,7 +1388,7 @@ class BareaApp
             {
                 //If computed function always rerender
                 alwayRerender=true;
-                
+
                 if (this.#computedProperties[datapath])
                     foreacharray = this.#computedProperties[datapath].value;
                 else
@@ -1426,6 +1426,7 @@ class BareaApp
            let counter=0;
            if (alwayRerender)
            {
+                this.#uiDependencyTracker.cleanDependencies();
                 ui.parentelement.innerHTML = "";
                 const fragment = document.createDocumentFragment();
                 foreacharray.forEach(row => {
@@ -1478,6 +1479,7 @@ class BareaApp
             else
             {
             
+               
 
                 if (reasonvalue === "push" && arrayfuncargs) {
                     arrayfuncargs.forEach(item => {
@@ -1516,6 +1518,10 @@ class BareaApp
                     //let newOrder = getNewOrder(path);
                     //reorderVisualTemplateChildren( ui.parentelement, newOrder);
                 }
+
+                this.#uiDependencyTracker.cleanDependencies();
+
+              
             }
         
     }
@@ -1987,6 +1993,8 @@ Unshift problem
             #objectReference = new WeakMap();
             #notifycallback = null;
             #objectCounter=0;
+            #trackingCalls=0;
+            #notificationCalls=0;
 
             constructor(notifycallback) 
             {
@@ -2004,13 +2012,21 @@ Unshift problem
                 return this.#objectReference.get(obj);
             }
 
-            // deleteDependency(object)
-            // {
-            //     if (!this.#objectReference.has(obj))
-            //     {
+            cleanDependencies()
+            {
+                // let keystodelete = [];
+                // this.#dependencies.forEach((value, key) => 
+                // {
+                //     for (const item of value) {
+                //         if (!this.#objectReference.has(item.data)) 
+                //             keystodelete.push(key);
+                //     }       
+                // });
 
-            //     }
-            // }
+                // for (let i = 0; i < keystodelete.length-1; i++)
+                //     this.#dependencies.delete(keystodelete[i]);
+
+            }
 
             getAllDependencies()
             {
@@ -2019,6 +2035,8 @@ Unshift problem
 
             track(trackingtype, ui, object=ui.data, key=ui.key) 
             {
+                this.#trackingCalls++;
+
                 let depKey="";
                 if (object && trackingtype!== 'global')
                 {
@@ -2038,27 +2056,20 @@ Unshift problem
 
             notify(reasonobj, reasonkey, reasonvalue, path, arrayfuncargs) 
             {
+                this.#notificationCalls++;
+
                 let depKey = this.#getObjectId(reasonobj) + ":" + reasonkey;
                 let workset = this.#dependencies.get(depKey);
                 if (!workset)
                     workset= new Set();
 
-                //If we interpolated an object belonging
-                let obj_interpolations= new Set();
-                if (reasonkey !== "")
-                {
-                    depKey = this.#getObjectId(reasonobj) + ":";
-                    obj_interpolations = this.#dependencies.get(depKey);
-                    if (!obj_interpolations)
-                        obj_interpolations= new Set();
-                }
 
                 depKey="global";
                 let globalset = this.#dependencies.get(depKey);
                 if (!globalset)
                     globalset= new Set();
 
-                let resultset = new Set([...workset, ...obj_interpolations, ...globalset]);
+                let resultset = new Set([...workset, ...globalset]);
 
                 this.#notifycallback(reasonobj, reasonkey, reasonvalue, path, resultset, arrayfuncargs);
             }
