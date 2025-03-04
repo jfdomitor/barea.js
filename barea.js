@@ -160,13 +160,14 @@ class BareaApp
     #internalSystemCounter = 0;
     #appDataProxy; 
     #appDataProxyMap = new WeakMap(); //Cache proxied objects
+    #dynamicExpressionRegistry = new Map(); //Cache proxied objects
+    #computedPropertyNames = [];
     #appData;
     #methods = {};
     #consoleLogs = [];
     #mounted=false;
     #mountedHandler=null;
     #computedProperties = {};
-    #computedKeys = [];
     #enableBareaId = false;
     #enableInterpolation = true;
     #enableHideUnloaded=false;
@@ -240,7 +241,7 @@ class BareaApp
                 if (typeof content.computed[key] === "function") {
                     this.#enableComputedProperties=true;
                     this.#computedProperties[key] = this.#getNewComputedProperty(content.computed[key], key);
-                    this.#computedKeys.push(key);
+                    this.#computedPropertyNames.push(key);
                 }
             });
         
@@ -601,7 +602,7 @@ class BareaApp
                         }
                         
                         
-                        this.#uiDependencyTracker.track(attr.value, tracking_obj);
+                        this.#uiDependencyTracker.track('value', tracking_obj);
 
                             if (DIR_GROUP_UI_DUPLEX.includes(tracking_obj.directive))
                             {
@@ -683,15 +684,24 @@ class BareaApp
                         if (condition.includes('?'))
                             condition = condition.split('?')[0];
 
-                        let handlername = "";
-                        if (genMarkup){
-                            handlername = `${META_DYN_TEMPLATE_FUNC_PREFIX}${this.#internalSystemCounter}`;
-                        }else{
-                            handlername = `${META_DYN_FUNC_PREFIX}${this.#internalSystemCounter}`;
+                        
+                        let isnewhandler = false;
+                        let handlername = this.#dynamicExpressionRegistry.get(attr.value);
+                        if (!handlername || attribute_value_type !== EXPR_TYPE_ROOT_EXPR)
+                        {
+                            isnewhandler=true;
+                            if (genMarkup){
+                                handlername = `${META_DYN_TEMPLATE_FUNC_PREFIX}${this.#internalSystemCounter}`;
+                            }else{
+                                handlername = `${META_DYN_FUNC_PREFIX}${this.#internalSystemCounter}`;
+                            }
+                            this.#dynamicExpressionRegistry.set(attr.value, handlername);
                         }
 
                         const tracking_obj = this.#createUiTrackingObject(templateid,el,attr.name,attr.value,null,"",-1);
-                        if (!templatedata){
+
+                        //If root expression force root data
+                        if (!templatedata || attribute_value_type === EXPR_TYPE_ROOT_EXPR){
                             tracking_obj.data=this.#appDataProxy;
                             tracking_obj.key="";
                         }else{
@@ -707,7 +717,7 @@ class BareaApp
                         if (attribute_value_type === EXPR_TYPE_COMPUTED)
                         {
                             tracking_obj.handlername=condition;
-                            this.#uiDependencyTracker.track('global', tracking_obj);
+                            this.#uiDependencyTracker.track('object', tracking_obj);
                             this.#runComputedFunction(tracking_obj);
                         }
                         else if (attribute_value_type === EXPR_TYPE_ROOT_EXPR){
@@ -729,10 +739,13 @@ class BareaApp
                             }
 
                             this.#enableComputedProperties=true;
-                            this.#computedProperties[handlername] = this.#getNewComputedProperty(boolRootFunc,handlername);
-                            this.#computedKeys.push(handlername);
+                            if (isnewhandler)
+                            {
+                                this.#computedProperties[handlername] = this.#getNewComputedProperty(boolRootFunc,handlername);
+                                this.#computedPropertyNames.push(handlername);
+                            }
                             tracking_obj.handlername=handlername;
-                            this.#uiDependencyTracker.track('global', tracking_obj);
+                            this.#uiDependencyTracker.track('object', tracking_obj);
                             this.#runComputedFunction(tracking_obj);
 
                         }
@@ -761,12 +774,15 @@ class BareaApp
                             }
 
                             this.#enableComputedProperties=true;
-                            this.#computedProperties[handlername] = this.#getNewComputedProperty(boolObjFunc,handlername);
-                            this.#computedKeys.push(handlername);
+                            if (isnewhandler)
+                            {
+                                this.#computedProperties[handlername] = this.#getNewComputedProperty(boolObjFunc,handlername);
+                                this.#computedPropertyNames.push(handlername);
+                            }
                             tracking_obj.handlername=handlername;
-                            this.#uiDependencyTracker.track('global', tracking_obj);
+                            this.#uiDependencyTracker.track('object', tracking_obj);
                             this.#runComputedFunction(tracking_obj);
-
+                           
                         }  
                         else if (attribute_value_type === EXPR_TYPE_MIX_EXPR)
                         {
@@ -797,10 +813,13 @@ class BareaApp
                             }
 
                             this.#enableComputedProperties=true;
-                            this.#computedProperties[handlername] = this.#getNewComputedProperty(boolMixedFunc,handlername);
-                            this.#computedKeys.push(handlername);
+                            if (isnewhandler)
+                            {
+                                this.#computedProperties[handlername] = this.#getNewComputedProperty(boolMixedFunc,handlername);
+                                this.#computedPropertyNames.push(handlername);
+                            }
                             tracking_obj.handlername=handlername;
-                            this.#uiDependencyTracker.track('global', tracking_obj);
+                            this.#uiDependencyTracker.track('object', tracking_obj);
                             this.#runComputedFunction(tracking_obj);
                         
                         }
@@ -871,12 +890,7 @@ class BareaApp
                             .replace(/(\S)\s{2,}(\S)/g, '$1 $2'); // Reduce multiple spaces to one inside text nodes
         
                         const tracking_obj = this.#createUiTemplateTrackingObject(templateid,el,attr.name,attr.value,null,"", el.parentElement,templateHtml, el.localName);
-                        if (attribute_value_type===EXPR_TYPE_COMPUTED)
-                        {
-                            this.#uiDependencyTracker.track('global', tracking_obj);
-                            this.#renderTemplates(tracking_obj);
-                        }
-                        else
+                        if (attribute_value_type!==EXPR_TYPE_COMPUTED)
                         {
                             let objpath = getLastBareaObjectName(datapath);
                             tracking_obj.data = this.getProxifiedPathData(objpath);
@@ -887,10 +901,11 @@ class BareaApp
                                 console.error(`could not find array for ${datapath} in  ${attr.name} directive`);
                                 return;
                             }
-                            this.#uiDependencyTracker.track(datapath, tracking_obj);
-                            this.#renderTemplates(tracking_obj);
-
+                           
                         }
+
+                        this.#uiDependencyTracker.track('object', tracking_obj);
+                        this.#renderTemplates(tracking_obj);
                           
                     }
                   
@@ -927,8 +942,9 @@ class BareaApp
                             else if ([EXPR_TYPE_ROOT_PATH,EXPR_TYPE_OBJREF,EXPR_TYPE_OBJREF_PATH,INTERPOL_INDEX].includes(attribute_value_type))
                             {
                                 //Find data
+                                let objpath=ROOT_OBJECT;
                                 if (!templatedata || path.startsWith(ROOT_OBJECT)){
-                                    let objpath = getLastBareaObjectName(path);
+                                    objpath = getLastBareaObjectName(path);
                                     tracking_obj.data=instance.getProxifiedPathData(objpath);
                                 }else{
                                     tracking_obj.data = templatedata;
@@ -937,7 +953,7 @@ class BareaApp
                                 //Find key
                                 tracking_obj.key="";
                                 let interpolation_key = getLastBareaKeyName(path);
-                                if (interpolation_key!=='root'){
+                                if (interpolation_key!==ROOT_OBJECT && interpolation_key!==objpath){
                                     tracking_obj.key=interpolation_key;
                                 }
 
@@ -953,24 +969,17 @@ class BareaApp
                             //Important track per node, not per expression, must render per node
                             let tracking_obj = nodeexpressions[0];
                             tracking_obj.nodeexpressions = nodeexpressions;
-                            if (nodeexpressions.length===1)
-                            {
-                                if (tracking_obj.iscomputed || !tracking_obj.key)
-                                {
-                                    instance.#uiDependencyTracker.track('global', tracking_obj);
-                                }
-                                else
-                                {
-                                    instance.#uiDependencyTracker.track(tracking_obj.directivevalue, tracking_obj);
-                                }
-                                instance.#setInterpolation(tracking_obj);
 
-                            }
-                            else
-                            {
+                            if (!tracking_obj.data || tracking_obj.iscomputed || nodeexpressions.some(t=>t.iscomputed)){
                                 instance.#uiDependencyTracker.track('global', tracking_obj);
-                                instance.#setInterpolation(tracking_obj);
+                            }else if (tracking_obj.key){
+                                instance.#uiDependencyTracker.track('value', tracking_obj);
+                            }else{
+                                instance.#uiDependencyTracker.track('object', tracking_obj);
                             }
+                           
+                            instance.#setInterpolation(tracking_obj);
+                         
                         }
                        
                        
@@ -1132,12 +1141,6 @@ class BareaApp
                     
             }
             else if (ui.directive===DIR_INTERPOLATION){
-
-                //For performance, if a textnode contains only one interpolation and that is based on a computed value
-                //textnodes based on a computed value or if there are more than two expressions then they are tracked with path = global
-                // let principalpath = getPrincipalBareaPath(path);
-                // if (!this.#computedPropertiesDependencyTracker.isDepencencyPath(principalpath, ui.directivevalue) && path !== ROOT_OBJECT)
-                //     return;
 
                 this.#setInterpolation(ui);
             }   
@@ -1368,7 +1371,7 @@ class BareaApp
      */
     #renderTemplates(ui, path='root', reasonvalue, arrayfuncargs) 
     {
-        let alwayRerender = false;
+        let alwayRerender = true;
         let foreacharray = [];
      
 
@@ -1403,9 +1406,9 @@ class BareaApp
             else
             {
                 //If a new array is assigned always rerender
-                if (Array.isArray(reasonvalue))
+                if (Array.isArray(reasonvalue) || (this.#isPrimitive(reasonvalue) && (reasonvalue === 'sort' || reasonvalue === 'reverse')))
                     alwayRerender= true;
-
+             
                 //If not an assigned array or function on an array, skip
                 if (!(Array.isArray(reasonvalue) || (this.#isPrimitive(reasonvalue) && ARRAY_FUNCTIONS.includes(reasonvalue))))
                     return;
@@ -1472,7 +1475,7 @@ class BareaApp
 
                 ARRAY_FUNCTIONS.forEach(f=>
                 {
-                    this.#uiDependencyTracker.track(datapath, ui, foreacharray, f);
+                    this.#uiDependencyTracker.track('object', ui, foreacharray, f);
                 });
 
             }
@@ -1514,13 +1517,20 @@ class BareaApp
                         ui.parentelement.insertBefore(newItem,  ui.parentelement.children[start] || null);
                     });
                 }
-                else if (reasonvalue === "sort" || reasonvalue === "reverse") {
-                    //let newOrder = getNewOrder(path);
-                    //reorderVisualTemplateChildren( ui.parentelement, newOrder);
-                }
+               
 
                 this.#uiDependencyTracker.cleanDependencies();
 
+                let counter=0;
+                foreacharray.forEach(row => {
+
+                    let ui = this.#uiDependencyTracker.getTemplateItem(row);
+                    if (ui){
+                        ui.element.setAttribute(META_ARRAY_INDEX, counter);
+                        counter++;
+                    }
+
+                });
               
             }
         
@@ -1532,7 +1542,8 @@ class BareaApp
         const newtag = document.createElement(template.templatetagname);
         newtag.innerHTML = template.templatemarkup;
         newtag.setAttribute(META_IS_GENERATED_MARKUP, true);
-        newtag.removeAttribute(DIR_FOREACH);
+        newtag.setAttribute(META_ARRAY_VARNAME, varname);
+  
 
         if (newtag.id)
             newtag.id = newtag.id + `-${this.#internalSystemCounter}` 
@@ -1543,6 +1554,8 @@ class BareaApp
         templatechildren.forEach(child => 
         {
             child.setAttribute(META_IS_GENERATED_MARKUP, true);
+            child.setAttribute(META_ARRAY_VARNAME, varname);
+
             if (child.id)
                 child.id = child.id + `-${this.#internalSystemCounter}` 
             else
@@ -1558,23 +1571,7 @@ class BareaApp
         return newtag;
     }
 
-    #reorderVisualTemplateChildren(parent, newOrder) {
-        let children = Array.from(parent.children);
-        newOrder.forEach((newIndex, oldIndex) => {
-            parent.appendChild(children[newIndex]); // Moves elements in place
-        });
-    }
-
-    #cleanUp(array, method, template)
-    {
-        foreacharray.forEach(row => {
-            //Add a map = templateid, Set of objects {depkey, row}
-            //Fetch all objects on template.id
-            //If row not among the objects, uidep.delete(row)
-            //DeleteIfNotExists(template.id, row)
-        });
-    }
-
+   
 
     /*** Internal Helpers ***/
 
@@ -1646,7 +1643,7 @@ class BareaApp
             if (expression.includes('.'))
                 return EXPR_TYPE_OBJREF_PATH;
 
-            if (this.#computedKeys.includes(expression))
+            if (this.#computedPropertyNames.includes(expression))
                 return EXPR_TYPE_COMPUTED;
 
             return EXPR_TYPE_OBJREF;
@@ -1991,6 +1988,7 @@ Unshift problem
         {
             #dependencies = new Map();
             #objectReference = new WeakMap();
+            #templateReference = new WeakMap();
             #notifycallback = null;
             #objectCounter=0;
             #trackingCalls=0;
@@ -2028,23 +2026,35 @@ Unshift problem
 
             }
 
+            getTemplateItem(object)
+            {
+                return this.#templateReference.get(object);
+            } 
+
             getAllDependencies()
             {
                 return this.#dependencies;
             } 
 
-            track(trackingtype, ui, object=ui.data, key=ui.key) 
+            track(scope, ui, object=ui.data, key=ui.key) 
             {
                 this.#trackingCalls++;
 
+                if (!object && !scope==='global')
+                    console.error(`Tracked UI ${ui} has no data`);
+
                 let depKey="";
-                if (object && trackingtype!== 'global')
+                if (scope==='value')
                 {
-                    depKey = this.#getObjectId(object) + ":" + key; 
-
-                }else{
-
-                    depKey="global";
+                    depKey = this.#getObjectId(object) + ":value:" + key; 
+                }
+                else if (scope==='object')
+                {
+                    depKey = this.#getObjectId(object) + ":object:"; 
+                }
+                else if (scope==='global')
+                {
+                    depKey = "global"; 
                 }
 
                 if (!this.#dependencies.has(depKey)) 
@@ -2052,24 +2062,41 @@ Unshift problem
                     this.#dependencies.set(depKey, new Set());
                 }
                 this.#dependencies.get(depKey).add(ui);
+
+                //For quick ref to template nodes from array objects
+                if (ui.templateid > 0)
+                {
+                    if (!this.#templateReference.has(object)) 
+                    {
+                        this.#templateReference.set(object, ui);
+                    }
+                }
+             
             }
 
             notify(reasonobj, reasonkey, reasonvalue, path, arrayfuncargs) 
             {
                 this.#notificationCalls++;
 
-                let depKey = this.#getObjectId(reasonobj) + ":" + reasonkey;
-                let workset = this.#dependencies.get(depKey);
-                if (!workset)
-                    workset= new Set();
+                let depKey = this.#getObjectId(reasonobj) + ":value:" + reasonkey;
+                let valueset = this.#dependencies.get(depKey);
+                if (!valueset)
+                    valueset= new Set();
 
 
-                depKey="global";
+                depKey = this.#getObjectId(reasonobj) + ":object:";
+                let objectset = this.#dependencies.get(depKey);
+                if (!objectset)
+                    objectset= new Set();
+
+                depKey = "global";
                 let globalset = this.#dependencies.get(depKey);
                 if (!globalset)
                     globalset= new Set();
 
-                let resultset = new Set([...workset, ...globalset]);
+                let resultset = new Set([...valueset, ...objectset, ...globalset]);
+                if (resultset.length===0)
+                    return;
 
                 this.#notifycallback(reasonobj, reasonkey, reasonvalue, path, resultset, arrayfuncargs);
             }
