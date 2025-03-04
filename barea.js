@@ -13,6 +13,7 @@ function getBareaApp(enableInternalId){
 
 //Directives
 const DIR_BIND = 'ba-bind';
+const DIR_BIND_BLUR = 'ba-bind-blur';
 const DIR_BIND_HANDLER  = 'ba-bind-handler';
 const DIR_FOREACH = 'ba-foreach';
 const DIR_CLICK = 'ba-click';
@@ -25,7 +26,8 @@ const DIR_IF = 'ba-if';
 const DIR_HREF = 'ba-href';
 const DIR_INTERPOLATION = 'interpolation';
 
-const DIR_GROUP_BOUND_TO_PATHS = [DIR_BIND,DIR_CLASS,DIR_HREF,DIR_IMAGE_SRC,DIR_INTERPOLATION]
+const DIR_GROUP_BIND_TO_PATH = [DIR_BIND,DIR_BIND_BLUR,DIR_CLASS,DIR_HREF,DIR_IMAGE_SRC]
+const DIR_GROUP_UI_DUPLEX = [DIR_BIND,DIR_BIND_BLUR];
 const DIR_GROUP_TRACK_AND_FORGET = [DIR_CLICK]
 const DIR_GROUP_COMPUTED = [DIR_CLASS_IF,DIR_HIDE,DIR_SHOW, DIR_IF]
 const DIR_GROUP_MARKUP_GENERATION = [DIR_FOREACH]
@@ -517,19 +519,9 @@ class BareaApp
         //Delete dynamic functions that was created along with the templates
         this.#computedPropertiesDependencyTracker.deleteDynamicTemplateFunctions();
 
-        
-        //Collect children of the template (this is the user generated template, that should be replaced)
-        const templateChildren=[];
-        function collectDescendants(ce) {
-            templateChildren.push(ce);
-            for (let i = 0; i < ce.children.length; i++) {
-                collectDescendants(ce.children[i]);
-            }
-        }
-        tag.querySelectorAll(`[${DIR_FOREACH}]`).forEach(parent => {
-            Array.from(parent.children).forEach(child => collectDescendants(child));
-        });
-
+        //Validate templates before proceeding
+        let templateChildren = this.#validateTemplateChildren();
+       
         //Find the world of barea.js (elements with attributes starting with ba-
         const bareaElements = Array.from(tag.querySelectorAll("*")).filter(el =>
             el.attributes.length && Array.prototype.some.call(el.attributes, attr => attr.name.startsWith("ba-"))
@@ -553,25 +545,24 @@ class BareaApp
                     this.#internalSystemCounter++;
 
             
-                    if (DIR_GROUP_BOUND_TO_PATHS.includes(attr.name))
+                    if (DIR_GROUP_BIND_TO_PATH.includes(attr.name))
                     {
                         const attribute_value_type = this.#getExpressionType(attr.value, attr.name);
                         if (attribute_value_type==='INVALID')
                         {
-                            console.error(`The ${attr.name} directive has an invalid (${attr.value}).`);
+                            console.error(`The ${attr.name} directive with value: (${attr.value}) is invalid.`);
                             return;
                         }
 
                         let inputtype = "";
                         let systeminput = -1;
-                        if (attr.name===DIR_BIND)
+                        if (DIR_GROUP_UI_DUPLEX.includes(attr.name))
                         {
                             inputtype = el.getAttribute("type");
                             if (!inputtype){
                                 systeminput=4;
-                                //console.warn(`could not detect inputtype on element where ${DIR_BIND} is used`);
                             }else{
-
+                                systeminput = 1;
                                 if (inputtype.toLowerCase()==="text")
                                     systeminput=1;
                                 if (inputtype.toLowerCase()==="checkbox")
@@ -610,14 +601,11 @@ class BareaApp
                         
                         this.#uiDependencyTracker.track(attr.value, tracking_obj);
 
-                            if (tracking_obj.directive===DIR_BIND)
+                            if (DIR_GROUP_UI_DUPLEX.includes(tracking_obj.directive))
                             {
-
                                 if (tracking_obj.hashandler)
-                                {
                                     this.#runBindHandler(VERB_SET_UI, tracking_obj);
-                                }
-                               
+                            
                                 if (tracking_obj.inputtype === UI_INPUT_TEXT){
                                     this.#setInputText(tracking_obj);
                                 }
@@ -628,7 +616,8 @@ class BareaApp
                                     this.#setInputRadio(tracking_obj);
                                 }
 
-                                el.addEventListener("input", (event) => {
+                                let eventtype = (tracking_obj.directive===DIR_BIND) ? "input" : "blur";
+                                el.addEventListener(eventtype, (event) => {
 
                                     if (tracking_obj.hashandler)
                                     {
@@ -988,6 +977,79 @@ class BareaApp
         
     }
 
+     /**
+     * Validates templates and removes them if invalid
+     * @returns An array of successfully validated template children
+     */
+    #validateTemplateChildren(tag=this.#appElement)
+    {
+        //There can't be templates in generated content
+        //No support for dynamic templates :)
+        if (tag !== this.#appElement)
+            return;
+
+         //Collect children of the template (this is the user generated template, that should be replaced)
+         let templateChildren=[];
+         let resultChildren=[];
+         function collectDescendants(ce, templateroot) 
+         {
+            templateChildren.push(ce);
+            for (let i = 0; i < ce.children.length; i++) 
+            {
+                   collectDescendants(ce.children[i]);
+            }
+           
+         }
+
+         tag.querySelectorAll(`[${DIR_FOREACH}]`).forEach(templateroot => 
+         {
+            let isValidTemplate = true;
+            templateChildren=[];
+             Array.from(templateroot.children).forEach(child => collectDescendants(child, templateroot));
+            
+            let templateattr = templateroot.getAttribute(DIR_FOREACH);
+            let [varname, datapath] = templateattr.split(" in ").map(s => s.trim());
+            if (!varname){
+                isValidTemplate=false;
+                console.error(`No variable name was found in the ${DIR_FOREACH} expression: ${templateattr}`);
+                //templateroot._isInvalidTemplate = true;
+                isValidTemplate = false;
+            }
+            if (!datapath){
+                isValidTemplate=false;
+                console.error(`No path or computed function was found in the ${DIR_FOREACH} expression: ${templateattr}`);
+                //templateroot._isInvalidTemplate = true;
+                isValidTemplate = false;
+            }
+
+            templateChildren.forEach(child=>{
+                DIR_GROUP_BIND_TO_PATH.forEach(dir=>{
+                    if (child.hasAttribute(dir)){
+                        let bareaattrib = child.getAttribute(dir);
+                        if (!bareaattrib.includes(ROOT_OBJECT)){
+                            if (!bareaattrib.includes(varname)){
+                                isValidTemplate=false;
+                                console.error(`The ${dir} expression ${bareaattrib} used in an element under ${DIR_FOREACH} does not match the ${DIR_FOREACH} expression, data should be reference by '${varname}'. or '${ROOT_OBJECT}'.`);
+                                isValidTemplate = false;
+                            }
+                        }
+                    }
+                });
+            });
+
+             if (!isValidTemplate){
+                //Remove the invalid template
+                templateroot.parentElement.innerHTML="";
+             }else{
+                resultChildren.push(...templateChildren);
+             }
+         });
+
+
+        return resultChildren;
+      
+    }
+
     #createUiTrackingObject(templateid, element, directive, directivevalue, data, key, inputtype)
     {
         let id = this.#internalSystemCounter++;
@@ -1008,14 +1070,14 @@ class BareaApp
     {
         resultset.forEach(ui => 
         {
-            if (DIR_GROUP_BOUND_TO_PATHS.includes(ui.directive)){
+            if (DIR_GROUP_BIND_TO_PATH.includes(ui.directive)){
 
                     if (ui.hashandler){
                         this.#runBindHandler(VERB_SET_UI, ui);
                         return;
                     }
 
-                    if (ui.directive===DIR_BIND)
+                    if (DIR_GROUP_UI_DUPLEX.includes(ui.directive))
                     {
                         if (ui.inputType === UI_INPUT_TEXT){
                             this.#setInputText(ui);
@@ -1036,18 +1098,19 @@ class BareaApp
                     else if (ui.directive===DIR_IMAGE_SRC){
                         this.#setSrc(ui);
                     }
-                    else if (ui.directive===DIR_INTERPOLATION){
-
-                        //For performance, if a textnode contains only one interpolation and that is based on a computed value
-                        //textnodes based on a computed value or if there are more than two expressions then they are tracked with path = global
-                        // let principalpath = getPrincipalBareaPath(path);
-                        // if (!this.#computedPropertiesDependencyTracker.isDepencencyPath(principalpath, ui.directivevalue) && path !== ROOT_OBJECT)
-                        //     return;
-
-                        this.#setInterpolation(ui);
-                    }    
+                    
                     
             }
+            else if (ui.directive===DIR_INTERPOLATION){
+
+                //For performance, if a textnode contains only one interpolation and that is based on a computed value
+                //textnodes based on a computed value or if there are more than two expressions then they are tracked with path = global
+                // let principalpath = getPrincipalBareaPath(path);
+                // if (!this.#computedPropertiesDependencyTracker.isDepencencyPath(principalpath, ui.directivevalue) && path !== ROOT_OBJECT)
+                //     return;
+
+                this.#setInterpolation(ui);
+            }   
             else if (DIR_GROUP_MARKUP_GENERATION.includes(ui.directive)){
 
                 this.#renderTemplates(ui, path, reasonvalue);  
@@ -1322,8 +1385,10 @@ class BareaApp
                
 
            let counter=0;
+
            //TODO: CLEAR OLD UI DEPENDENCIES 
            //this.#removeTemplateChildrenFromDomDictionary(template.id);
+
             ui.parentelement.innerHTML = ""; // Clear list
           
             const fragment = document.createDocumentFragment();
@@ -1343,27 +1408,14 @@ class BareaApp
 
                 fragment.appendChild(newtag);
             
-                newtag.querySelectorAll(`[${DIR_IF}], [${DIR_HIDE}], [${DIR_SHOW}], [${DIR_CLASS_IF}], [${DIR_CLICK}], [${DIR_BIND}]`).forEach(el => 
-                {
-                    el.setAttribute(META_ARRAY_VARNAME, varname);
-                    el.setAttribute(META_ARRAY_INDEX, counter);
-                    el.setAttribute(META_IS_GENERATED_MARKUP, true);
-
-                 
-                    if (el.hasAttribute(DIR_BIND)) {
-                        let attrib = el.getAttribute(DIR_BIND);
-                        if (!attrib.includes(varname + '.'))
-                            console.warn(`The ${DIR_BIND} expression ${attrib} used in an element under ${ui.directive} does not match the ${ui.directive} expression, should reference '${varname}'.`);
-                    
-                    }
-                   
-                    
-                });
-
+               //Mark the children for easier tracking
                 let templatechildren = newtag.querySelectorAll("*"); 
                 templatechildren.forEach(child => 
                 {
-                    child.setAttribute(META_IS_GENERATED_MARKUP, true);
+                   child.setAttribute(META_ARRAY_VARNAME, varname);
+                   child.setAttribute(META_ARRAY_INDEX, counter);
+                   child.setAttribute(META_IS_GENERATED_MARKUP, true);
+
 
                     if (child.id)
                         child.id = child.id + `-${counter}` 
@@ -1392,7 +1444,7 @@ class BareaApp
 
     #getExpressionType = function(expression, directive, varname) 
     {
-        if ([DIR_CLASS, DIR_BIND, DIR_IMAGE_SRC, DIR_HREF].includes(directive))
+        if (DIR_GROUP_BIND_TO_PATH.includes(directive))
         {
             if (expression.includes('(') || expression.includes(')'))
                 return "INVALID";
