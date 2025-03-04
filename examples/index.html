@@ -239,13 +239,13 @@
                             <tr>
                                 <td width="5%"><b>Index</b></td>
                                 <td width="20%"><b>Date</b></td>
-                                <td width="20%"><span ba-hide="root.edit" ba-click="sortList()"><b>Note (Click to sort)</b></span><span ba-show="root.edit"><b>Note (ba-bind)</b></span></td>
+                                <td width="20%"><span ba-hide="root.edit" ba-click="sortList()"><b>Note (Click to sort)</b></span><span ba-show="root.edit"><b>Note</b></span></td>
                                 <td width="20%"><b>Rate</b></td>
                                 <td></td>
                             </tr>
                         </thead>
                         <tbody>
-                            <tr ba-foreach="show in sortedShows">
+                            <tr ba-foreach="show in root.model.shows">
                                 <td ba-class-if="show.marked?bluebg">
                                     <span ba-hide="root.edit">{{index}}</span>
                                     <span ba-show="root.edit"><input type="checkbox" ba-bind="show.marked" /></span>
@@ -290,7 +290,7 @@
         //bareaapp.enableConsoleLog(1, true);
         //bareaapp.enableConsoleLog(2, true);
         //bareaapp.enableConsoleLog(3, true);
-        //bareaapp.enableConsoleLog(4, true);
+        bareaapp.enableConsoleLog(4, true);
         //bareaapp.enableConsoleLog(5, true);
 
         //Turn off interpolation for speed

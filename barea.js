@@ -172,6 +172,9 @@ class BareaApp
     #enableHideUnloaded=false;
     #enableComputedProperties=false;
 
+    //Experimental
+    #enableTemplateReRendering=false;
+
     //UI
     #uiDependencyTracker=null;
 
@@ -871,11 +874,27 @@ class BareaApp
                             .replace(/(\S)\s{2,}(\S)/g, '$1 $2'); // Reduce multiple spaces to one inside text nodes
         
                         const tracking_obj = this.#createUiTemplateTrackingObject(templateid,el,attr.name,attr.value,null,"", el.parentElement,templateHtml, el.localName);
-                        this.#uiDependencyTracker.track('global', tracking_obj);
-                       
-                        el.remove();
+                        if (attribute_value_type===EXPR_TYPE_COMPUTED)
+                        {
+                            this.#uiDependencyTracker.track('global', tracking_obj);
+                            this.#renderTemplates(tracking_obj);
+                        }
+                        else
+                        {
+                            let objpath = getLastBareaObjectName(datapath);
+                            tracking_obj.data = this.getProxifiedPathData(objpath);
+                            tracking_obj.key = getLastBareaKeyName(datapath);
+                            el.remove();
+                            if (!Array.isArray(tracking_obj.data[tracking_obj.key]))
+                            {
+                                console.error(`could not find array for ${datapath} in  ${attr.name} directive`);
+                                return;
+                            }
+                            this.#uiDependencyTracker.track(datapath, tracking_obj);
+                            this.#renderTemplates(tracking_obj);
 
-                        this.#renderTemplates(tracking_obj);
+                        }
+                          
                     }
                   
 
@@ -1352,7 +1371,7 @@ class BareaApp
      */
     #renderTemplates(ui, path='root', changedvalue) 
     {
-
+        let rerender = this.#enableTemplateReRendering;
         let foreacharray = [];
      
 
@@ -1370,6 +1389,8 @@ class BareaApp
 
             if (this.#getExpressionType(datapath, ui.directive)===EXPR_TYPE_COMPUTED)
             {
+                //If computed function always rerender
+                rerender=true;
                 if (this.#computedProperties[datapath])
                     foreacharray = this.#computedProperties[datapath].value;
                 else
@@ -1383,9 +1404,17 @@ class BareaApp
             }
             else
             {
-                  //Important: Only render on array operations like pop, push, unshift etc if bound directly with data path
-                if (!(Array.isArray(changedvalue) || (this.#isPrimitive(changedvalue) && ARRAY_FUNCTIONS.includes(changedvalue))))
-                    return;
+                if (rerender){
+                    //Important: Only render on array operations like pop, push, unshift etc if bound directly with data path
+                    if (!(Array.isArray(changedvalue) || (this.#isPrimitive(changedvalue) && ARRAY_FUNCTIONS.includes(changedvalue))))
+                        return;
+                }else{
+
+                    //If bound to array
+                    //If only update if array function, still update on array=[] (assignment)
+                    if (Array.isArray(changedvalue))
+                        rerender= true;
+                }
                    
                 foreacharray = this.getProxifiedPathData(datapath); 
             }
@@ -1398,59 +1427,148 @@ class BareaApp
             }
                
 
+            //Re render template every time notified
            let counter=0;
+           if (rerender)
+           {
+                ui.parentelement.innerHTML = "";
+                const fragment = document.createDocumentFragment();
+                foreacharray.forEach(row => {
+                    const newtag = document.createElement(ui.templatetagname);
+                    newtag.innerHTML = ui.templatemarkup;
+                    newtag.setAttribute(META_ARRAY_VARNAME, varname);
+                    newtag.setAttribute(META_ARRAY_INDEX, counter);
+                    newtag.setAttribute(META_IS_GENERATED_MARKUP, true);
 
-           //TODO: CLEAR OLD UI DEPENDENCIES 
-           //this.#removeTemplateChildrenFromDomDictionary(template.id);
-
-            ui.parentelement.innerHTML = ""; // Clear list
-          
-            const fragment = document.createDocumentFragment();
-
-            foreacharray.forEach(row => {
-                const newtag = document.createElement(ui.templatetagname);
-              
-                newtag.innerHTML = ui.templatemarkup;
-                newtag.setAttribute(META_ARRAY_VARNAME, varname);
-                newtag.setAttribute(META_ARRAY_INDEX, counter);
-                newtag.setAttribute(META_IS_GENERATED_MARKUP, true);
-
-                if (newtag.id)
-                    newtag.id = newtag.id + `-${counter}` 
-                else
-                    newtag.id = `${ui.id}-${varname}-${counter}`; 
-
-                fragment.appendChild(newtag);
-            
-               //Mark the children for easier tracking
-                let templatechildren = newtag.querySelectorAll("*"); 
-                templatechildren.forEach(child => 
-                {
-                   child.setAttribute(META_ARRAY_VARNAME, varname);
-                   child.setAttribute(META_ARRAY_INDEX, counter);
-                   child.setAttribute(META_IS_GENERATED_MARKUP, true);
-
-
-                    if (child.id)
-                        child.id = child.id + `-${counter}` 
+                    if (newtag.id)
+                        newtag.id = newtag.id + `-${counter}` 
                     else
-                        child.id = `${varname}-${counter}`; 
+                        newtag.id = `${ui.id}-${varname}-${counter}`; 
 
-                    let forattrib = child.getAttribute("for");
-                    if (forattrib)
-                        child.setAttribute("for", forattrib + `-${counter}`); 
-                   
+                    fragment.appendChild(newtag);
+                
+                    //Mark the children for easier tracking
+                    let templatechildren = newtag.querySelectorAll("*"); 
+                    templatechildren.forEach(child => 
+                    {
+                        child.setAttribute(META_ARRAY_VARNAME, varname);
+                        child.setAttribute(META_ARRAY_INDEX, counter);
+                        child.setAttribute(META_IS_GENERATED_MARKUP, true);
+
+                        if (child.id)
+                            child.id = child.id + `-${counter}` 
+                        else
+                            child.id = `${varname}-${counter}`; 
+
+                        let forattrib = child.getAttribute("for");
+                        if (forattrib)
+                            child.setAttribute("for", forattrib + `-${counter}`); 
+                    
+                    });
+
+                    this.#detectElements(newtag, ui.id, row, "");
+                    counter++;
                 });
 
-                this.#detectElements(newtag, ui.id, row, "");
+                if (fragment.childElementCount>0)
+                    ui.parentelement.appendChild(fragment);  
 
-                counter++;
+                ARRAY_FUNCTIONS.forEach(f=>
+                {
+                    this.#uiDependencyTracker.track(datapath, ui, f);
+                });
 
-            });
+            }
+            else
+            {
 
-            if (fragment.childElementCount>0)
-                ui.parentelement.appendChild(fragment);   
+                if (changedvalue === "push") {
+                    args.forEach(item => {
+                        let newItem = this.#getTemplateElement(ui, item);
+                        ui.parentelement.appendChild(newItem); // Only append, no full re-render
+                    });
+                } 
+                else if (changedvalue === "unshift") {
+                    args.reverse().forEach(item => {
+                        let newItem = this.#getTemplateElement(ui, item);
+                        ui.parentelement.insertBefore(newItem,  ui.parentelement.firstChild);
+                    });
+                }
+                else if (changedvalue === "pop") {
+                    ui.parentelement.removeChild( ui.parentelement.lastChild);
+                }
+                else if (changedvalue === "shift") {
+                    ui.parentelement.removeChild( ui.parentelement.firstChild);
+                }
+                else if (changedvalue === "splice") {
+                    let [start, deleteCount, ...newItems] = args;
+                    let children = Array.from(ui.parentelement.children);
+            
+                    // Remove only the specified number of items
+                    for (let i = 0; i < deleteCount; i++) {
+                        if (children[start]) ui.parentelement.removeChild(children[start]);
+                    }
+            
+                    // Insert new items at the right position
+                    newItems.reverse().forEach(item => {
+                        let newItem = this.#getTemplateElement(ui, item);
+                        ui.parentelement.insertBefore(newItem,  ui.parentelement.children[start] || null);
+                    });
+                }
+                else if (changedvalue === "sort" || changedvalue === "reverse") {
+                    //let newOrder = getNewOrder(path);
+                    //reorderVisualTemplateChildren( ui.parentelement, newOrder);
+                }
+            }
         
+    }
+
+    #getTemplateElement(template, row)
+    {
+        this.#internalSystemCounter++;
+        let newtag = template.element.content.cloneNode(true);
+        newtag.setAttribute(META_IS_GENERATED_MARKUP, true);
+        newtag.removeAttribute(DIR_FOREACH);
+
+        if (newtag.id)
+            newtag.id = newtag.id + `-${this.#internalSystemCounter}` 
+        else
+            newtag.id = `${template.id}-${varname}-${this.#internalSystemCounter}`; 
+
+        let templatechildren = newtag.querySelectorAll("*"); 
+        templatechildren.forEach(child => 
+        {
+            child.setAttribute(META_IS_GENERATED_MARKUP, true);
+            if (child.id)
+                child.id = child.id + `-${this.#internalSystemCounter}` 
+            else
+                child.id = `${varname}-${this.#internalSystemCounter}`; 
+
+            let forattrib = child.getAttribute("for");
+            if (forattrib)
+                child.setAttribute("for", forattrib + `-${counter}`); 
+        
+        });
+
+        this.#detectElements(newtag, template.id, row, "");
+        return clone;
+    }
+
+    #reorderVisualTemplateChildren(parent, newOrder) {
+        let children = Array.from(parent.children);
+        newOrder.forEach((newIndex, oldIndex) => {
+            parent.appendChild(children[newIndex]); // Moves elements in place
+        });
+    }
+
+    #cleanUp(array, method, template)
+    {
+        foreacharray.forEach(row => {
+            //Add a map = templateid, Set of objects {depkey, row}
+            //Fetch all objects on template.id
+            //If row not among the objects, uidep.delete(row)
+            //DeleteIfNotExists(template.id, row)
+        });
     }
 
 
@@ -1888,17 +2006,25 @@ Unshift problem
                 return this.#objectReference.get(obj);
             }
 
+            // deleteDependency(object)
+            // {
+            //     if (!this.#objectReference.has(obj))
+            //     {
+
+            //     }
+            // }
+
             getAllDependencies()
             {
                 return this.#dependencies;
             } 
 
-            track(trackingtype, ui) 
+            track(trackingtype, ui, key=ui.key) 
             {
                 let depKey="";
                 if (ui.data && trackingtype!== 'global')
                 {
-                    depKey = this.#getObjectId(ui.data) + ":" + ui.key; 
+                    depKey = this.#getObjectId(ui.data) + ":" + key; 
 
                 }else{
 
