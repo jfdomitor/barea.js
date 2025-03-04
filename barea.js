@@ -172,9 +172,6 @@ class BareaApp
     #enableHideUnloaded=false;
     #enableComputedProperties=false;
 
-    //Experimental
-    #enableTemplateReRendering=false;
-
     //UI
     #uiDependencyTracker=null;
 
@@ -275,7 +272,7 @@ class BareaApp
             return;
         }
           
-        const proxy = this.#createReactiveProxy((path, value, key, target) => 
+        const proxy = this.#createReactiveProxy((path, value, key, target, args) => 
         { 
             //Handles changes in the data and updates the dom
             let log = this.#getConsoleLog(1);
@@ -284,9 +281,9 @@ class BareaApp
 
             let noproxy = this.#appDataProxyMap.get(target);
             if (noproxy)
-                this.#uiDependencyTracker.notify(noproxy, key, value, path);
+                this.#uiDependencyTracker.notify(noproxy, key, value, path, args);
             else
-                this.#uiDependencyTracker.notify(target, key, value, path);
+                console.error('could not get proxified value from the proxy map');//this.#uiDependencyTracker.notify(target, key, value, path, args);
 
         }, this.#appData);
 
@@ -467,7 +464,7 @@ class BareaApp
                                     if (this.#enableComputedProperties)
                                         this.#computedPropertiesDependencyTracker.notify(currentpath, value.name);
 
-                                    callback(currentpath, value.name, key, target);
+                                    callback(currentpath, value.name, key, target, args);
 
                                     
                                     return result;
@@ -1099,7 +1096,7 @@ class BareaApp
         return {id: id, isnew:true, templateid: templateid, directive:directive,  directivevalue:directivevalue, element: null, data:data, key:key, hashandler:false, handlername:"", inputtype:-1, interpolatednode: interpolatednode, expression: expression, nodetemplate:nodetemplate  };
     }
 
-    #handleUITrackerNofify = (reasonobj, reasonkey, reasonvalue, path, resultset) =>
+    #handleUITrackerNofify = (reasonobj, reasonkey, reasonvalue, path, resultset, arrayfuncargs) =>
     {
         resultset.forEach(ui => 
         {
@@ -1146,7 +1143,7 @@ class BareaApp
             }   
             else if (DIR_GROUP_MARKUP_GENERATION.includes(ui.directive)){
 
-                this.#renderTemplates(ui, path, reasonvalue);  
+                this.#renderTemplates(ui, path, reasonvalue, arrayfuncargs);  
             }
             else if (DIR_GROUP_COMPUTED.includes(ui.directive))
             {
@@ -1369,9 +1366,9 @@ class BareaApp
      * @param {string} key - The key in the parent affected object.
      * @param {any} target - The parent object of what's changed.
      */
-    #renderTemplates(ui, path='root', changedvalue) 
+    #renderTemplates(ui, path='root', reasonvalue, arrayfuncargs) 
     {
-        let rerender = this.#enableTemplateReRendering;
+        let alwayRerender = false;
         let foreacharray = [];
      
 
@@ -1390,7 +1387,8 @@ class BareaApp
             if (this.#getExpressionType(datapath, ui.directive)===EXPR_TYPE_COMPUTED)
             {
                 //If computed function always rerender
-                rerender=true;
+                alwayRerender=true;
+                
                 if (this.#computedProperties[datapath])
                     foreacharray = this.#computedProperties[datapath].value;
                 else
@@ -1404,18 +1402,15 @@ class BareaApp
             }
             else
             {
-                if (rerender){
-                    //Important: Only render on array operations like pop, push, unshift etc if bound directly with data path
-                    if (!(Array.isArray(changedvalue) || (this.#isPrimitive(changedvalue) && ARRAY_FUNCTIONS.includes(changedvalue))))
-                        return;
-                }else{
+                //If a new array is assigned always rerender
+                if (Array.isArray(reasonvalue))
+                    alwayRerender= true;
 
-                    //If bound to array
-                    //If only update if array function, still update on array=[] (assignment)
-                    if (Array.isArray(changedvalue))
-                        rerender= true;
-                }
-                   
+                //If not an assigned array or function on an array, skip
+                if (!(Array.isArray(reasonvalue) || (this.#isPrimitive(reasonvalue) && ARRAY_FUNCTIONS.includes(reasonvalue))))
+                    return;
+
+               
                 foreacharray = this.getProxifiedPathData(datapath); 
             }
 
@@ -1429,11 +1424,12 @@ class BareaApp
 
             //Re render template every time notified
            let counter=0;
-           if (rerender)
+           if (alwayRerender)
            {
                 ui.parentelement.innerHTML = "";
                 const fragment = document.createDocumentFragment();
                 foreacharray.forEach(row => {
+                    this.#internalSystemCounter++;
                     const newtag = document.createElement(ui.templatetagname);
                     newtag.innerHTML = ui.templatemarkup;
                     newtag.setAttribute(META_ARRAY_VARNAME, varname);
@@ -1441,9 +1437,9 @@ class BareaApp
                     newtag.setAttribute(META_IS_GENERATED_MARKUP, true);
 
                     if (newtag.id)
-                        newtag.id = newtag.id + `-${counter}` 
+                        newtag.id = newtag.id + `-${this.#internalSystemCounter}` 
                     else
-                        newtag.id = `${ui.id}-${varname}-${counter}`; 
+                        newtag.id = `${ui.id}-${varname}-${this.#internalSystemCounter}`; 
 
                     fragment.appendChild(newtag);
                 
@@ -1456,13 +1452,13 @@ class BareaApp
                         child.setAttribute(META_IS_GENERATED_MARKUP, true);
 
                         if (child.id)
-                            child.id = child.id + `-${counter}` 
+                            child.id = child.id + `-${this.#internalSystemCounter}` 
                         else
-                            child.id = `${varname}-${counter}`; 
+                            child.id = `${varname}-${this.#internalSystemCounter}`; 
 
                         let forattrib = child.getAttribute("for");
                         if (forattrib)
-                            child.setAttribute("for", forattrib + `-${counter}`); 
+                            child.setAttribute("for", forattrib + `-${this.#internalSystemCounter}`); 
                     
                     });
 
@@ -1475,33 +1471,34 @@ class BareaApp
 
                 ARRAY_FUNCTIONS.forEach(f=>
                 {
-                    this.#uiDependencyTracker.track(datapath, ui, f);
+                    this.#uiDependencyTracker.track(datapath, ui, foreacharray, f);
                 });
 
             }
             else
             {
+            
 
-                if (changedvalue === "push") {
-                    args.forEach(item => {
-                        let newItem = this.#getTemplateElement(ui, item);
+                if (reasonvalue === "push" && arrayfuncargs) {
+                    arrayfuncargs.forEach(item => {
+                        let newItem = this.#getTemplateElement(ui, varname, item);
                         ui.parentelement.appendChild(newItem); // Only append, no full re-render
                     });
                 } 
-                else if (changedvalue === "unshift") {
-                    args.reverse().forEach(item => {
-                        let newItem = this.#getTemplateElement(ui, item);
+                else if (reasonvalue === "unshift" && arrayfuncargs) {
+                    arrayfuncargs.reverse().forEach(item => {
+                        let newItem = this.#getTemplateElement(ui, varname, item);
                         ui.parentelement.insertBefore(newItem,  ui.parentelement.firstChild);
                     });
                 }
-                else if (changedvalue === "pop") {
+                else if (reasonvalue === "pop") {
                     ui.parentelement.removeChild( ui.parentelement.lastChild);
                 }
-                else if (changedvalue === "shift") {
+                else if (reasonvalue === "shift") {
                     ui.parentelement.removeChild( ui.parentelement.firstChild);
                 }
-                else if (changedvalue === "splice") {
-                    let [start, deleteCount, ...newItems] = args;
+                else if (reasonvalue === "splice" && arrayfuncargs) {
+                    let [start, deleteCount, ...newItems] = arrayfuncargs;
                     let children = Array.from(ui.parentelement.children);
             
                     // Remove only the specified number of items
@@ -1511,11 +1508,11 @@ class BareaApp
             
                     // Insert new items at the right position
                     newItems.reverse().forEach(item => {
-                        let newItem = this.#getTemplateElement(ui, item);
+                        let newItem = this.#getTemplateElement(ui, varname, item);
                         ui.parentelement.insertBefore(newItem,  ui.parentelement.children[start] || null);
                     });
                 }
-                else if (changedvalue === "sort" || changedvalue === "reverse") {
+                else if (reasonvalue === "sort" || reasonvalue === "reverse") {
                     //let newOrder = getNewOrder(path);
                     //reorderVisualTemplateChildren( ui.parentelement, newOrder);
                 }
@@ -1523,10 +1520,11 @@ class BareaApp
         
     }
 
-    #getTemplateElement(template, row)
+    #getTemplateElement(template, varname, row)
     {
         this.#internalSystemCounter++;
-        let newtag = template.element.content.cloneNode(true);
+        const newtag = document.createElement(template.templatetagname);
+        newtag.innerHTML = template.templatemarkup;
         newtag.setAttribute(META_IS_GENERATED_MARKUP, true);
         newtag.removeAttribute(DIR_FOREACH);
 
@@ -1546,12 +1544,12 @@ class BareaApp
 
             let forattrib = child.getAttribute("for");
             if (forattrib)
-                child.setAttribute("for", forattrib + `-${counter}`); 
+                child.setAttribute("for", forattrib + `-${this.#internalSystemCounter}`); 
         
         });
 
         this.#detectElements(newtag, template.id, row, "");
-        return clone;
+        return newtag;
     }
 
     #reorderVisualTemplateChildren(parent, newOrder) {
@@ -2019,12 +2017,12 @@ Unshift problem
                 return this.#dependencies;
             } 
 
-            track(trackingtype, ui, key=ui.key) 
+            track(trackingtype, ui, object=ui.data, key=ui.key) 
             {
                 let depKey="";
-                if (ui.data && trackingtype!== 'global')
+                if (object && trackingtype!== 'global')
                 {
-                    depKey = this.#getObjectId(ui.data) + ":" + key; 
+                    depKey = this.#getObjectId(object) + ":" + key; 
 
                 }else{
 
@@ -2038,7 +2036,7 @@ Unshift problem
                 this.#dependencies.get(depKey).add(ui);
             }
 
-            notify(reasonobj, reasonkey, reasonvalue, path) 
+            notify(reasonobj, reasonkey, reasonvalue, path, arrayfuncargs) 
             {
                 let depKey = this.#getObjectId(reasonobj) + ":" + reasonkey;
                 let workset = this.#dependencies.get(depKey);
@@ -2062,7 +2060,7 @@ Unshift problem
 
                 let resultset = new Set([...workset, ...obj_interpolations, ...globalset]);
 
-                this.#notifycallback(reasonobj, reasonkey, reasonvalue, path, resultset);
+                this.#notifycallback(reasonobj, reasonkey, reasonvalue, path, resultset, arrayfuncargs);
             }
 
            
