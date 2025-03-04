@@ -574,7 +574,9 @@ class BareaApp
 
                         let tracking_obj = this.#createUiTrackingObject(templateid,el,attr.name,attr.value,null,"",systeminput);
                 
-                        if (!templatedata){
+                        //If root is included in the attr.value, example root.model.users.name
+                        //Then we will bind to the root even if this is a template node
+                        if (!templatedata || attr.value.startsWith(ROOT_OBJECT)){
                             let objpath = getLastBareaObjectName(attr.value);
                             tracking_obj.data=this.getProxifiedPathData(objpath);
                             tracking_obj.key=getLastBareaKeyName(attr.value);
@@ -752,6 +754,12 @@ class BareaApp
                                 return evalObjExpr(condition, tracking_obj.data);
                             }
 
+                            if (!varname)
+                            {
+                                console.error(`Invalid expression: ${condition} to use as a dynamicly created function in a template.`);
+                                return;
+                            }
+
                             this.#enableComputedProperties=true;
                             this.#computedProperties[handlername] = this.#getNewComputedProperty(boolObjFunc,handlername);
                             this.#computedKeys.push(handlername);
@@ -780,6 +788,12 @@ class BareaApp
                                 condition=condition.replaceAll('root.','rootdata.');
                                 condition=condition.replaceAll(varname+'.','subdata.');
                                 return evalMixedExpr(condition, subobj,rootobj);
+                            }
+
+                            if (!varname)
+                            {
+                                console.error(`Invalid expression: ${condition} to use as a dynamicly created function in a template.`);
+                                return;
                             }
 
                             this.#enableComputedProperties=true;
@@ -897,7 +911,7 @@ class BareaApp
                             else if ([EXPR_TYPE_ROOT_PATH,EXPR_TYPE_OBJREF,EXPR_TYPE_OBJREF_PATH,INTERPOL_INDEX].includes(attribute_value_type))
                             {
                                 //Find data
-                                if (!templatedata){
+                                if (!templatedata || path.startsWith(ROOT_OBJECT)){
                                     let objpath = getLastBareaObjectName(path);
                                     tracking_obj.data=instance.getProxifiedPathData(objpath);
                                 }else{

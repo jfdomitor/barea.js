@@ -252,7 +252,7 @@
                                 </td>
                                 <td ba-class-if="root.edit&&show.marked?redbg">{{show.Date}}</td>
                                 <td>
-                                    <span ba-hide="root.edit">{{show.Note}}</span>
+                                    <span ba-show="!root.edit">{{show.Note}}</span>
                                     <span ba-show="root.edit"><input type="text" ba-bind-blur="show.Note" /></span>
                                 </td>
                                 <td id="ratecol"></td>
@@ -291,7 +291,7 @@
         //bareaapp.enableConsoleLog(2, true);
         //bareaapp.enableConsoleLog(3, true);
         //bareaapp.enableConsoleLog(4, true);
-        bareaapp.enableConsoleLog(5, true);
+        //bareaapp.enableConsoleLog(5, true);
 
         //Turn off interpolation for speed
         //bareaapp.enableInterpolation(false);
