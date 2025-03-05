@@ -159,7 +159,7 @@ class BareaApp
     #bareaId=0;
     #internalSystemCounter = 0;
     #appDataProxy; 
-    #appDataProxyMap = new WeakMap(); //Cache proxied objects
+    #appDataProxySet = new WeakSet(); //Cache proxied objects
     #dynamicExpressionRegistry = new Map(); //Cache proxied objects
     #computedPropertyNames = [];
     #appData;
@@ -280,11 +280,12 @@ class BareaApp
             if (log.active)
                 console.log(log.name, path, value, key, target);
 
-            let noproxy = this.#appDataProxyMap.get(target);
-            if (noproxy)
-                this.#uiDependencyTracker.notify(noproxy, key, value, path, args);
-            else
-                console.error('could not get proxified value from the proxy map');//this.#uiDependencyTracker.notify(target, key, value, path, args);
+            this.#uiDependencyTracker.notify(target, key, value, path, args);
+            // let noproxy = this.#appDataProxyMap.get(target);
+            // if (noproxy)
+            //     this.#uiDependencyTracker.notify(noproxy, key, value, path, args);
+            // else
+            //     console.error('could not get proxified value from the proxy map');//this.#uiDependencyTracker.notify(target, key, value, path, args);
 
         }, this.#appData);
 
@@ -408,7 +409,7 @@ class BareaApp
         return result;
     }
 
-   
+    
     #createReactiveProxy(callback, data, currentpath = "root") 
     {
         const handler = {
@@ -434,8 +435,8 @@ class BareaApp
                
                 if (typeof value === 'object' && value !== null) 
                 {
-                    if (this.#appDataProxyMap.has(value)) {
-                        return this.#appDataProxyMap.get(value);
+                    if (this.#appDataProxySet.has(value)) {
+                        return value;
                     }
 
                     if (!Array.isArray(value) && this.#enableBareaId && !value.hasOwnProperty('baId')) 
@@ -443,9 +444,8 @@ class BareaApp
                         value.baId = ++this.#bareaId;  
                     }
 
-                    let proxiedValue = this.#createReactiveProxy(callback, value, newPath); 
-                    this.#appDataProxyMap.set(value, proxiedValue);
-                    return proxiedValue;
+                    this.#appDataProxySet.add(value);
+                    return value;
 
                 }else{
 
@@ -458,10 +458,11 @@ class BareaApp
                             }
                             let funckey = currentpath+'_'+value.name;
                             if (!this.bareaWrappedMethods.has(funckey)) {
-                                this.bareaWrappedMethods.set(funckey, (...args) => {
+                                this.bareaWrappedMethods.set(funckey, (...args) => 
+                                {
 
+                                    //let proxiedArgs = args.map(arg => this.#makeReactive.call(this, callback, arg, currentpath));
                                     const result = Array.prototype[value.name].apply(target, args);
-
                                     if (this.#enableComputedProperties)
                                         this.#computedPropertiesDependencyTracker.notify(currentpath, value.name);
 
@@ -490,8 +491,22 @@ class BareaApp
 
                 if (target[key] === value) 
                     return true;
+
+                // Object.keys(value).forEach(key => {
+                //     if (typeof data[key] === "object" && value[key] !== null) {
+                //         if (!Array.isArray(data[key])) {
+                //             target[key] = this.#createReactiveProxy(callback, data[key]);
+                //         } else {
+                //             data[key].forEach((item, index) => {
+                //                 if (typeof item === "object" && item !== null) {
+                //                     data[key][index] = this.#createReactiveProxy(callback, item);
+                //                 }
+                //             });
+                //         }
+                //     }
+                // });
         
-                target[key] = value;
+                target[key] = (typeof value === "object" && value !== null) ? this.#createReactiveProxy(callback, value, newPath) : value;
 
                 if (this.#enableComputedProperties)
                 {
@@ -507,9 +522,24 @@ class BareaApp
                 return true;
             }
         };
+
+        Object.keys(data).forEach(key => {
+            if (typeof data[key] === "object" && data[key] !== null) {
+                if (!Array.isArray(data[key])) {
+                    data[key] = this.#createReactiveProxy(callback, data[key]);
+                } else {
+                    data[key].forEach((item, index) => {
+                        if (typeof item === "object" && item !== null) {
+                            data[key][index] = this.#createReactiveProxy(callback, item);
+                        }
+                    });
+                }
+            }
+        });
+        
         
         let proxiedValue =new Proxy(data, handler);
-        this.#appDataProxyMap.set(data, proxiedValue);
+        //this.#appDataProxyMap.set(data, proxiedValue);
         return proxiedValue;
 
     }
