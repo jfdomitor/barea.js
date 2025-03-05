@@ -159,7 +159,6 @@ class BareaApp
     #bareaId=0;
     #internalSystemCounter = 0;
     #appDataProxy; 
-    #appDataProxySet = new WeakSet(); //Cache proxied objects
     #dynamicExpressionRegistry = new Map(); //Cache proxied objects
     #computedPropertyNames = [];
     #appData;
@@ -273,19 +272,24 @@ class BareaApp
             return;
         }
           
-        const proxy = this.#createReactiveProxy((path, value, key, target, args) => 
+        const proxy = this.#createReactiveProxy((path, reasonobj, reasonkey, reasonvalue, reasonfuncname) => 
         { 
             //Handles changes in the data and updates the dom
             let log = this.#getConsoleLog(1);
             if (log.active)
-                console.log(log.name, path, value, key, target);
+                console.log(log.name, path, reasonobj, reasonkey, reasonvalue, reasonfuncname);
 
-            this.#uiDependencyTracker.notify(target, key, value, path, args);
-            // let noproxy = this.#appDataProxyMap.get(target);
-            // if (noproxy)
-            //     this.#uiDependencyTracker.notify(noproxy, key, value, path, args);
-            // else
-            //     console.error('could not get proxified value from the proxy map');//this.#uiDependencyTracker.notify(target, key, value, path, args);
+            //Tweak for array functions
+            //On array asssign: reasonobj=parent, reasonkey=arrayname, we will do the same here
+            if (Array.isArray(reasonobj) && ARRAY_FUNCTIONS.includes(reasonfuncname)){
+                let objpath = getLastBareaObjectName(path);
+                reasonkey = getLastBareaKeyName(path);
+                reasonobj=this.getProxifiedPathData(objpath);
+                if (!reasonobj)
+                    console.error('could not find array on path: ' + path);
+            }
+
+            this.#uiDependencyTracker.notify(path, reasonobj, reasonkey, reasonvalue, reasonfuncname="");
 
         }, this.#appData);
 
@@ -409,12 +413,18 @@ class BareaApp
         return result;
     }
 
-    
+    /**
+     * The heart, the proxy
+     * A recursive proxy for reactivity
+     * Strategy: 1. Only proxy on get, 2. Always get data after set (callback)
+     */
     #createReactiveProxy(callback, data, currentpath = "root") 
     {
         const handler = {
-            get: (target, key) => {
-                const value = target[key];
+            get: (target, key, receiver) => {
+
+                let value = Reflect.get(target, key, receiver);
+
                 const newPath = Array.isArray(target) ? `${currentpath}[${key}]` : `${currentpath}.${key}`;
               
                 if (this.#enableComputedProperties)
@@ -435,17 +445,26 @@ class BareaApp
                
                 if (typeof value === 'object' && value !== null) 
                 {
-                    if (this.#appDataProxySet.has(value)) {
-                        return value;
-                    }
-
+                  
                     if (!Array.isArray(value) && this.#enableBareaId && !value.hasOwnProperty('baId')) 
                     {
                         value.baId = ++this.#bareaId;  
                     }
 
-                    this.#appDataProxySet.add(value);
-                    return value;
+
+                    return this.#createReactiveProxy(callback, value, newPath); 
+
+                    //Don't proxy the array, only objects, then function will not be found
+                    // if (!Array.isArray(value)) {
+                    //     return this.#createReactiveProxy(callback, value, newPath); 
+                    // } else {
+       
+                    //     value.forEach((item, index) => {
+                    //         if (typeof item === "object" && item !== null) {
+                    //             return this.#createReactiveProxy(callback, item, newPath); 
+                    //         }
+                    //     });
+                    // }
 
                 }else{
 
@@ -462,11 +481,20 @@ class BareaApp
                                 {
 
                                     //let proxiedArgs = args.map(arg => this.#makeReactive.call(this, callback, arg, currentpath));
-                                    const result = Array.prototype[value.name].apply(target, args);
+                                    //const result = Array.prototype[value.name].apply(target, args);
+
+                                    let proxiedArgs = args.map(arg => 
+                                        (typeof arg === "object" && arg !== null) ? this.#createReactiveProxy(callback, arg) : arg
+                                    );
+                    
+                                    //const result = Array.prototype[value.name].apply(target, proxiedArgs);
+                                    const result = value.apply(target, proxiedArgs); 
+
                                     if (this.#enableComputedProperties)
                                         this.#computedPropertiesDependencyTracker.notify(currentpath, value.name);
 
-                                    callback(currentpath, value.name, key, target, args);
+                                    //callback(currentpath, parentobj, parentkey, proxiedArgs, key);
+                                    callback(currentpath, receiver, '', proxiedArgs, value.name);
 
                                     
                                     return result;
@@ -482,7 +510,7 @@ class BareaApp
               
                 return value;
             },
-            set: (target, key, value) => {
+            set: (target, key, value, receiver) => {
 
                 const newPath = Array.isArray(target) ? `${currentpath}[${key}]` : `${currentpath}.${key}`;
 
@@ -491,22 +519,8 @@ class BareaApp
 
                 if (target[key] === value) 
                     return true;
-
-                // Object.keys(value).forEach(key => {
-                //     if (typeof data[key] === "object" && value[key] !== null) {
-                //         if (!Array.isArray(data[key])) {
-                //             target[key] = this.#createReactiveProxy(callback, data[key]);
-                //         } else {
-                //             data[key].forEach((item, index) => {
-                //                 if (typeof item === "object" && item !== null) {
-                //                     data[key][index] = this.#createReactiveProxy(callback, item);
-                //                 }
-                //             });
-                //         }
-                //     }
-                // });
         
-                target[key] = (typeof value === "object" && value !== null) ? this.#createReactiveProxy(callback, value, newPath) : value;
+                target[key] = value;
 
                 if (this.#enableComputedProperties)
                 {
@@ -516,30 +530,15 @@ class BareaApp
                         this.#computedPropertiesDependencyTracker.notify(newPath, null);
 
                 }
-                    
-                callback(newPath, value, key, target);
+                 
+                //Out puts raw data (no proxy here)
+                callback(newPath, receiver, key, receiver[key]);
 
                 return true;
             }
         };
-
-        Object.keys(data).forEach(key => {
-            if (typeof data[key] === "object" && data[key] !== null) {
-                if (!Array.isArray(data[key])) {
-                    data[key] = this.#createReactiveProxy(callback, data[key]);
-                } else {
-                    data[key].forEach((item, index) => {
-                        if (typeof item === "object" && item !== null) {
-                            data[key][index] = this.#createReactiveProxy(callback, item);
-                        }
-                    });
-                }
-            }
-        });
-        
         
         let proxiedValue =new Proxy(data, handler);
-        //this.#appDataProxyMap.set(data, proxiedValue);
         return proxiedValue;
 
     }
@@ -2033,11 +2032,17 @@ Unshift problem
                 instance = this;
             }
 
-            #getObjectId(obj) {
-                if (!this.#objectReference.has(obj)) {
+            #getObjectId(obj) 
+            {
+                let isnewobj = false;
+                let retval = 0;
+                if (!this.#objectReference.has(obj)) 
+                {
+                    isnewobj=true;
                     this.#objectReference.set(obj, ++this.#objectCounter); // Assign a new ID
                 }
-                return this.#objectReference.get(obj);
+                retval = this.#objectReference.get(obj);
+                return {id:retval, isnew:isnewobj};
             }
 
             cleanDependencies()
@@ -2104,31 +2109,43 @@ Unshift problem
              
             }
 
-            notify(reasonobj, reasonkey, reasonvalue, path, arrayfuncargs) 
+            notify(path, reasonobj, reasonkey, reasonvalue, reasonfuncname) 
             {
                 this.#notificationCalls++;
 
-                let depKey = this.#getObjectId(reasonobj) + ":value:" + reasonkey;
-                let valueset = this.#dependencies.get(depKey);
-                if (!valueset)
-                    valueset= new Set();
 
 
-                depKey = this.#getObjectId(reasonobj) + ":object:";
-                let objectset = this.#dependencies.get(depKey);
-                if (!objectset)
-                    objectset= new Set();
+                let objid = this.#getObjectId(reasonobj);
+                if (!objid.isnew)
+                {
+                    let depKey = objid.id + ":value:" + reasonkey;
+                    let valueset = this.#dependencies.get(depKey);
+                    if (!valueset)
+                        valueset= new Set();
 
-                depKey = "global";
-                let globalset = this.#dependencies.get(depKey);
-                if (!globalset)
-                    globalset= new Set();
+                    depKey = objid.id + ":object:";
+                    let objectset = this.#dependencies.get(depKey);
+                    if (!objectset)
+                        objectset= new Set();
+    
+                    depKey = "global";
+                    let globalset = this.#dependencies.get(depKey);
+                    if (!globalset)
+                        globalset= new Set();
+    
+                    let resultset = new Set([...valueset, ...objectset, ...globalset]);
+                    if (resultset.length===0)
+                        return;
+    
+                    this.#notifycallback(reasonobj, reasonkey, reasonvalue, path, resultset);
+                }
+                else
+                {
+                   //Render
+                   let x = 0;
 
-                let resultset = new Set([...valueset, ...objectset, ...globalset]);
-                if (resultset.length===0)
-                    return;
-
-                this.#notifycallback(reasonobj, reasonkey, reasonvalue, path, resultset, arrayfuncargs);
+                }
+              
             }
 
            
