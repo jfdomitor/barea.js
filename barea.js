@@ -554,7 +554,7 @@ class BareaApp
     #detectElements(tag=this.#appElement, templateid=-1, templatedata, templatekey)
     {
         //Delete dynamic functions that was created along with the templates
-        this.#computedPropertiesDependencyTracker.deleteDynamicTemplateFunctions();
+        //this.#computedPropertiesDependencyTracker.deleteDynamicTemplateFunctions();
 
         //Validate templates before proceeding
         let templateChildren = this.#validateTemplateChildren();
@@ -621,6 +621,9 @@ class BareaApp
                             tracking_obj.data=templatedata;
                             tracking_obj.key=getLastBareaKeyName(attr.value);
                         }
+
+                        if (templatedata)
+                            tracking_obj.scopedata=templatedata;
                     
                         let handlername = el.getAttribute(DIR_BIND_HANDLER);
                         if (handlername)
@@ -736,13 +739,17 @@ class BareaApp
 
                         const tracking_obj = this.#createUiTrackingObject(templateid,el,attr.name,attr.value,null,"",-1);
 
-                        //If root expression force root data
-                        if (!templatedata || attribute_value_type === EXPR_TYPE_ROOT_EXPR){
+                        //If root expression force root data to be executed
+                        if (!templatedata){
                             tracking_obj.data=this.#appDataProxy;
-                            tracking_obj.key="";
                         }else{
                             tracking_obj.data=templatedata;
-                            tracking_obj.key=templatekey;
+                        }
+
+                        //Important
+                        tracking_obj.key=""; //Not needed in functions
+                        if (templatedata){
+                            tracking_obj.scopedata = templatedata;
                         }
 
                         if (attr.name === DIR_IF){
@@ -752,8 +759,10 @@ class BareaApp
             
                         if (attribute_value_type === EXPR_TYPE_COMPUTED)
                         {
+                            //The tracking_obj.data data isn't used, scope=object or maybe=global
                             tracking_obj.handlername=condition;
-                            this.#uiDependencyTracker.track('object', tracking_obj);
+                            this.#uiDependencyTracker.track('global', tracking_obj);
+                            this.#computedProperties[tracking_obj.handlername].addDependenUserInterface(tracking_obj);
                             this.#runComputedFunction(tracking_obj);
                         }
                         else if (attribute_value_type === EXPR_TYPE_ROOT_EXPR){
@@ -781,7 +790,8 @@ class BareaApp
                                 this.#computedPropertyNames.push(handlername);
                             }
                             tracking_obj.handlername=handlername;
-                            this.#uiDependencyTracker.track('object', tracking_obj);
+                            this.#computedProperties[tracking_obj.handlername].addDependenUserInterface(tracking_obj);
+                            this.#uiDependencyTracker.track('global', tracking_obj);
                             this.#runComputedFunction(tracking_obj);
 
                         }
@@ -816,7 +826,8 @@ class BareaApp
                                 this.#computedPropertyNames.push(handlername);
                             }
                             tracking_obj.handlername=handlername;
-                            this.#uiDependencyTracker.track('object', tracking_obj);
+                            this.#computedProperties[tracking_obj.handlername].addDependenUserInterface(tracking_obj);
+                            this.#uiDependencyTracker.track('global', tracking_obj);
                             this.#runComputedFunction(tracking_obj);
                            
                         }  
@@ -855,7 +866,8 @@ class BareaApp
                                 this.#computedPropertyNames.push(handlername);
                             }
                             tracking_obj.handlername=handlername;
-                            this.#uiDependencyTracker.track('object', tracking_obj);
+                            this.#computedProperties[tracking_obj.handlername].addDependenUserInterface(tracking_obj);
+                            this.#uiDependencyTracker.track('global', tracking_obj);
                             this.#runComputedFunction(tracking_obj);
                         
                         }
@@ -919,7 +931,7 @@ class BareaApp
                              console.error(`No path or computed function was found in the ${attr.name} expression`);
                              return;
                          }
-             
+
                         
                         let templateHtml = el.innerHTML.trim()
                             .replace(/>\s+</g, '><')  // Remove spaces between tags
@@ -938,6 +950,8 @@ class BareaApp
                                 return;
                             }
                            
+                        }else{
+                            this.#computedProperties[datapath].addDependenUserInterface(tracking_obj);
                         }
 
                         this.#uiDependencyTracker.track('value', tracking_obj);
@@ -1186,11 +1200,13 @@ class BareaApp
             }
             else if (DIR_GROUP_COMPUTED.includes(ui.directive))
             {
+                if (path)
+                {
                     let principalpath = getPrincipalBareaPath(path);
                     if (!this.#computedPropertiesDependencyTracker.isDepencencyPath(principalpath, ui.handlername) && path !== ROOT_OBJECT)
                         return;
-
-                    this.#runComputedFunction(ui);
+                }
+                this.#runComputedFunction(ui);
             }
         });
     }
@@ -1205,7 +1221,7 @@ class BareaApp
         if (this.#computedProperties[handlername]) {
                 boundvalue = this.#computedProperties[handlername].value;
         } else {
-            console.warn(`Computed boolean handler '${handlername}' not found.`);
+            console.warn(`Computed boolean function '${handlername}' not found.`);
         }
         
         if (ui.directive===DIR_HIDE)
@@ -1454,7 +1470,6 @@ class BareaApp
             }
 
           
-            
             if (!Array.isArray(foreacharray)){
                 console.error('Could not get array in renderTemplates, should not happen if there is a god');
                 return; 
@@ -1465,7 +1480,9 @@ class BareaApp
            let counter=0;
            if (alwayRerender)
            {
-                this.#uiDependencyTracker.cleanDependencies();
+                //Clean all dependencies on templateid
+                this.#uiDependencyTracker.removeTemplateDependencies(ui.id);
+
                 ui.parentelement.innerHTML = "";
                 const fragment = document.createDocumentFragment();
                 foreacharray.forEach(row => {
@@ -1533,9 +1550,11 @@ class BareaApp
                     });
                 }
                 else if (reasonvalue === "pop") {
+                    this.#uiDependencyTracker.removeDependency(arrayfuncargs[0]);
                     ui.parentelement.removeChild( ui.parentelement.lastChild);
                 }
                 else if (reasonvalue === "shift") {
+                    this.#uiDependencyTracker.removeDependency(arrayfuncargs[0]);
                     ui.parentelement.removeChild( ui.parentelement.firstChild);
                 }
                 else if (reasonvalue === "splice" && arrayfuncargs) {
@@ -1544,7 +1563,9 @@ class BareaApp
             
                     // Remove only the specified number of items
                     for (let i = 0; i < deleteCount; i++) {
+                        this.#uiDependencyTracker.removeDependency(arrayfuncargs[i]);
                         if (children[start]) ui.parentelement.removeChild(children[start]);
+                        
                     }
             
                     // Insert new items at the right position
@@ -1555,17 +1576,14 @@ class BareaApp
                 }
                
 
-                this.#uiDependencyTracker.cleanDependencies();
-
                 let counter=0;
-                foreacharray.forEach(row => {
-
-                    let ui = this.#uiDependencyTracker.getTemplateItem(row);
-                    if (ui){
+                foreacharray.forEach(row => 
+                {
+                    let deps = this.#uiDependencyTracker.getDependencies(row);
+                    deps.forEach(ui=>{
                         ui.element.setAttribute(META_ARRAY_INDEX, counter);
                         counter++;
-                    }
-
+                    });
                 });
               
             }
@@ -1823,25 +1841,34 @@ Unshift problem
 - Cached value is fetched
 
 */
-    #getNewComputedProperty(getter, key)
+    #getNewComputedProperty(func, funcname)
     {
         let instance = this;
         let computed_properties_tracker = this.#computedPropertiesDependencyTracker;
+        let userinterface_tracker = this.#uiDependencyTracker;
         class BareaComputedProperty
         {
-            constructor(getter, key, barea) {
-                this.name=key;
-                this.getter = getter;
+            #userInterfaces = new Set();
+
+            constructor(func, funcname) {
+                this.name=funcname;
+                this.getter = func;
                 this.dirty = true;
                 this.dependencyPaths = new Set();
                 this.setDirty = (principalpath) => {
                     this.dirty = true;
+                    userinterface_tracker.notifyDependentUserInterface(this.#userInterfaces);
                 };
             }
         
             track(dep, principalpath) {
                 dep.addSubscriber(this.name, this.setDirty); //The computed property tells that tracker: Hi i'm a new subscriber
                 this.dependencyPaths.add(principalpath);
+            }
+
+            addDependenUserInterface(ui)
+            {
+                this.#userInterfaces.add(ui);
             }
         
             get value() 
@@ -1857,7 +1884,7 @@ Unshift problem
             }
         }
 
-        return new BareaComputedProperty(getter, key);
+        return new BareaComputedProperty(func, funcname);
     }
 
     #getComputedPropertiesDependencyTracker()
@@ -1890,20 +1917,6 @@ Unshift problem
             {
                 return this.#dependencies;
             } 
-
-            deleteDynamicTemplateFunctions()
-            {
-                // this.dependencies.forEach((childMap) => {
-                //     childMap.subscribers.forEach((value, key) => {
-                //     if (key.includes(META_DYN_TEMPLATE_FUNC_PREFIX)) {
-                //         childMap.subscribers.delete(key); 
-                //         if (window[key]) {
-                //             delete window[key];
-                //         }
-                //     }
-                //     });
-                // });
-            }
 
             isDepencencyPath(path, funcname)
             {
@@ -2024,7 +2037,6 @@ Unshift problem
         {
             #dependencies = new Map();
             #objectReference = new WeakMap();
-            #templateReference = new WeakMap();
             #notifycallback = null;
             #objectCounter=0;
             #trackingCalls=0;
@@ -2052,25 +2064,58 @@ Unshift problem
                 return {id:retval, isnew:isnewobj};
             }
 
-            cleanDependencies()
+            removeTemplateDependencies(templateid=-1)
             {
-                // let keystodelete = [];
-                // this.#dependencies.forEach((value, key) => 
-                // {
-                //     for (const item of value) {
-                //         if (!this.#objectReference.has(item.data)) 
-                //             keystodelete.push(key);
-                //     }       
-                // });
+                let keystodelete = [];
+                this.#dependencies.forEach((value, key) => 
+                {
+                    for (const item of value) 
+                    {
+                        if (item.templateid===templateid && templateid!==-1)
+                            if (this.#objectReference.has(item.data)) 
+                                keystodelete.push(key);
+                    }       
+                });
 
-                // for (let i = 0; i < keystodelete.length-1; i++)
-                //     this.#dependencies.delete(keystodelete[i]);
+                for (let i = 0; i < keystodelete.length-1; i++)
+                    this.#dependencies.delete(keystodelete[i]);
 
             }
 
-            getTemplateItem(object)
+            removeDependency(object)
             {
-                return this.#templateReference.get(object);
+                let keystodelete = [];
+                this.#dependencies.forEach((value, key) => 
+                {
+                    for (const item of value) 
+                    {
+                        if (this.#objectReference.has(object)) 
+                            keystodelete.push(key);
+                    }       
+                });
+
+                for (let i = 0; i < keystodelete.length-1; i++)
+                    this.#dependencies.delete(keystodelete[i]);
+
+            }
+
+            getDependencies(object)
+            {
+                let returndependencies = [];
+                let connectedkeys = [];
+                this.#dependencies.forEach((value, key) => 
+                {
+                    for (const item of value) 
+                    {
+                        if (this.#objectReference.has(object)) 
+                            connectedkeys.push(key);
+                    }       
+                });
+
+                for (let i = 0; i < connectedkeys.length-1; i++)
+                    returndependencies.push(connectedkeys[i]);
+
+                return returndependencies;
             } 
 
             getAllDependencies()
@@ -2082,20 +2127,26 @@ Unshift problem
             {
                 this.#trackingCalls++;
 
-                if (!ui.data && !scope==='global')
+                if (!ui.data)
                     console.error(`Tracked UI has no data`,ui);
 
-                // if (!ui.key)
-                //     console.error(`Tracked UI has no key`,ui);
+                if (DIR_GROUP_COMPUTED.includes(ui.directive))
+                    return;
+
+                //Used for dynamic functions, the should only execute when the object theyre on is notified
+                //ui.data = where the function should work, ui.scopedata = where the function resides
+                let object = ui.data;
+                if (ui.scopedata)
+                    object=ui.scopedata;
 
                 let depKey="";
                 if (scope==='value')
                 {
-                    depKey = this.#getObjectId(ui.data).id + ":value:" + ui.key; 
+                    depKey = this.#getObjectId(object).id + ":value:" + ui.key; 
                 }
                 else if (scope==='object')
                 {
-                    depKey = this.#getObjectId(ui.data).id + ":object:"; 
+                    depKey = this.#getObjectId(object).id + ":object:"; 
                 }
                 else if (scope==='global')
                 {
@@ -2108,22 +2159,13 @@ Unshift problem
                 }
                 this.#dependencies.get(depKey).add(ui);
 
-                //For quick ref to template nodes from array objects
-                if (ui.templateid > 0)
-                {
-                    if (!this.#templateReference.has(ui.data))
-                    {
-                        this.#templateReference.set(ui.data, ui);
-                    }
-                }
+               
              
             }
 
             notify(path, reasonobj, reasonkey, reasonvalue, reasonfuncname) 
             {
                 this.#notificationCalls++;
-
-
 
                 let objid = this.#getObjectId(reasonobj);
                 if (!objid.isnew)
@@ -2147,16 +2189,27 @@ Unshift problem
                     if (resultset.length===0)
                         return;
     
-                    this.#notifycallback(reasonobj, reasonkey, reasonvalue, path, resultset);
+                    this.#notifycallback(reasonobj, reasonkey, reasonvalue, path, resultset, reasonfuncname);
                 }
                 else
                 {
-                   //Render
-                   let x = 0;
+                  //Shouldn't happen
 
                 }
               
             }
+
+            notifyDependentUserInterface(uiset) 
+            {
+                if (uiset)
+                {
+                    let resultset = new Set([...uiset]);
+                    this.#notifycallback(null, "", null, "", uiset, "");
+                }
+            }
+           
+            
+
 
            
 

@@ -261,8 +261,8 @@
                             -->
                             <tr ba-foreach="show in root.model.shows">
                                 <td ba-class-if="show.marked?bluebg">
-                                    <span ba-show="!root.edit">{{index}}</span>
-                                    <span ba-show="root.edit"><input type="checkbox" ba-bind="show.marked" /></span>
+                                    <span ba-show="lineShowIndex">{{index}}</span>
+                                    <span ba-show="lineShowEdit"><input type="checkbox" ba-bind="show.marked" /></span>
                                 </td>
                                 <td>{{show.Date}}</td>
                                 <td>
@@ -409,12 +409,20 @@
                 showCount: function()
                 {
                     return this.getData().model.shows.length;
+                },
+                lineShowIndex: function()
+                {
+                    return !this.getData().edit;
+                },
+                lineShowEdit: function()
+                {
+                    return this.getData().edit;
                 }
 
             },
             mounted: function(data) 
             {
-                data.model.shows = getRamonesShows().slice(0,this.getData().addMoreCount);
+                data.model.shows = [];//getRamonesShows().slice(0,this.getData().addMoreCount);
             }
          };
 
