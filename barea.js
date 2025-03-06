@@ -159,6 +159,7 @@ class BareaApp
     #bareaId=0;
     #internalSystemCounter = 0;
     #appDataProxy; 
+    #appDataProxyCache = new WeakMap(); //To avoid reproxying 
     #dynamicExpressionRegistry = new Map(); //Cache proxied objects
     #computedPropertyNames = [];
     #appData;
@@ -272,7 +273,7 @@ class BareaApp
             return;
         }
           
-        const proxy = this.#createReactiveProxy((path, reasonobj, reasonkey, reasonvalue, reasonfuncname) => 
+        const proxy = this.#createReactiveProxy((path, reasonobj, reasonkey, reasonvalue, reasonfuncname="") => 
         { 
             //Handles changes in the data and updates the dom
             let log = this.#getConsoleLog(1);
@@ -289,7 +290,7 @@ class BareaApp
                     console.error('could not find array on path: ' + path);
             }
 
-            this.#uiDependencyTracker.notify(path, reasonobj, reasonkey, reasonvalue, reasonfuncname="");
+            this.#uiDependencyTracker.notify(path, reasonobj, reasonkey, reasonvalue, reasonfuncname);
 
         }, this.#appData);
 
@@ -420,6 +421,7 @@ class BareaApp
      */
     #createReactiveProxy(callback, data, currentpath = "root") 
     {
+
         const handler = {
             get: (target, key, receiver) => {
 
@@ -451,8 +453,13 @@ class BareaApp
                         value.baId = ++this.#bareaId;  
                     }
 
-
-                    return this.#createReactiveProxy(callback, value, newPath); 
+                    if (this.#appDataProxyCache.has(value)) {
+                        return this.#appDataProxyCache.get(value);
+                    }
+            
+                    const proxiedvalue = this.#createReactiveProxy(callback, value, newPath); 
+                    this.#appDataProxyCache.set(value, proxiedvalue);
+                    return proxiedvalue;
 
                     //Don't proxy the array, only objects, then function will not be found
                     // if (!Array.isArray(value)) {
@@ -483,18 +490,18 @@ class BareaApp
                                     //let proxiedArgs = args.map(arg => this.#makeReactive.call(this, callback, arg, currentpath));
                                     //const result = Array.prototype[value.name].apply(target, args);
 
-                                    let proxiedArgs = args.map(arg => 
-                                        (typeof arg === "object" && arg !== null) ? this.#createReactiveProxy(callback, arg) : arg
-                                    );
+                                    // let proxiedArgs = args.map(arg => 
+                                    //     (typeof arg === "object" && arg !== null) ? this.#createReactiveProxy(callback, arg) : arg
+                                    // );
                     
                                     //const result = Array.prototype[value.name].apply(target, proxiedArgs);
-                                    const result = value.apply(target, proxiedArgs); 
+                                    const result = value.apply(target, args); 
 
                                     if (this.#enableComputedProperties)
                                         this.#computedPropertiesDependencyTracker.notify(currentpath, value.name);
 
                                     //callback(currentpath, parentobj, parentkey, proxiedArgs, key);
-                                    callback(currentpath, receiver, '', proxiedArgs, value.name);
+                                    callback(currentpath, receiver, '', args, value.name);
 
                                     
                                     return result;
@@ -892,7 +899,7 @@ class BareaApp
                         }
                         
                     }
-                    else if (DIR_GROUP_MARKUP_GENERATION.includes(attr.name) && tag === this.#appElement)
+                    else if (DIR_GROUP_MARKUP_GENERATION.includes(attr.name))
                     {
                         const attribute_value_type = this.#getExpressionType(attr.value, attr.name);
                         if (attribute_value_type==='INVALID')
@@ -933,7 +940,7 @@ class BareaApp
                            
                         }
 
-                        this.#uiDependencyTracker.track('object', tracking_obj);
+                        this.#uiDependencyTracker.track('value', tracking_obj);
                         this.#renderTemplates(tracking_obj);
                           
                     }
@@ -2071,21 +2078,24 @@ Unshift problem
                 return this.#dependencies;
             } 
 
-            track(scope, ui, object=ui.data, key=ui.key) 
+            track(scope, ui) 
             {
                 this.#trackingCalls++;
 
-                if (!object && !scope==='global')
-                    console.error(`Tracked UI ${ui} has no data`);
+                if (!ui.data && !scope==='global')
+                    console.error(`Tracked UI has no data`,ui);
+
+                // if (!ui.key)
+                //     console.error(`Tracked UI has no key`,ui);
 
                 let depKey="";
                 if (scope==='value')
                 {
-                    depKey = this.#getObjectId(object) + ":value:" + key; 
+                    depKey = this.#getObjectId(ui.data).id + ":value:" + ui.key; 
                 }
                 else if (scope==='object')
                 {
-                    depKey = this.#getObjectId(object) + ":object:"; 
+                    depKey = this.#getObjectId(ui.data).id + ":object:"; 
                 }
                 else if (scope==='global')
                 {
@@ -2101,9 +2111,9 @@ Unshift problem
                 //For quick ref to template nodes from array objects
                 if (ui.templateid > 0)
                 {
-                    if (!this.#templateReference.has(object)) 
+                    if (!this.#templateReference.has(ui.data))
                     {
-                        this.#templateReference.set(object, ui);
+                        this.#templateReference.set(ui.data, ui);
                     }
                 }
              
