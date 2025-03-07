@@ -431,7 +431,7 @@ class BareaApp
                     if (BareaHelper.DIR_GROUP_BIND_TO_PATH.includes(attr.name))
                     {
                         const attribute_value_type = this.#getExpressionType(attr.value, attr.name);
-                        if (attribute_value_type==='INVALID')
+                        if (attribute_value_type===BareaHelper.EXPR_TYPE_INVALID)
                         {
                             console.error(`The ${attr.name} directive with value: (${attr.value}) is invalid.`);
                             return;
@@ -456,6 +456,8 @@ class BareaApp
                         }
 
                         let tracking_obj = this.#createInputDirective(templateid,el,attr.name,attr.value,null,"",systeminput);
+                        tracking_obj.expressiontype = attribute_value_type;
+
                 
                         //If root is included in the attr.value, example root.model.users.name
                         //Then we will bind to the root even if this is a template node
@@ -478,7 +480,7 @@ class BareaApp
                         if (handlername)
                         {
                             const check_handler = this.#getExpressionType(handlername, BareaHelper.DIR_BIND_HANDLER);
-                            if (check_handler==='INVALID')
+                            if (check_handler===BareaHelper.EXPR_TYPE_INVALID)
                             {
                                 console.error(`The ${BareaHelper.DIR_BIND_HANDLER} directive has an invalid value (${handlername}), should be funcname(), or funcname(args..).`);
                                 return;
@@ -562,12 +564,23 @@ class BareaApp
                         const genMarkup = el.getAttribute(BareaHelper.META_IS_GENERATED_MARKUP);
                         const varname = el.getAttribute(BareaHelper.META_ARRAY_VARNAME);
                         const attribute_value_type = this.#getExpressionType(attr.value, attr.name, varname);
-                        if (attribute_value_type==='INVALID')
+                        if (attribute_value_type===BareaHelper.EXPR_TYPE_INVALID)
                          {
                             console.error(`Then ${attr.name} directive has an invalid value (${attr.value}).`);
                             return;
                         }
     
+                        const tracking_obj = this.#createComputedDirective(templateid,el,attr.name,attr.value);
+                        tracking_obj.expressiontype = attribute_value_type;
+
+                        //If root expression force root data to be executed
+                        if (!templatedata){
+                            tracking_obj.data=this.#appDataProxy;
+                        }else{
+                            tracking_obj.data=templatedata;
+                        }
+                        tracking_obj.key="";
+
                         let condition = attr.value.trim();
                         if (condition.includes('?'))
                             condition = condition.split('?')[0];
@@ -575,7 +588,7 @@ class BareaApp
                         
                         let isnewhandler = false;
                         let handlername = this.#dynamicExpressionRegistry.get(attr.value);
-                        if (!handlername || attribute_value_type !== BareaHelper.EXPR_TYPE_ROOT_EXPR)
+                        if (!handlername || templatedata) //Must use different handlers, since notification doesn't work otherwise.
                         {
                             isnewhandler=true;
                             if (genMarkup){
@@ -586,15 +599,6 @@ class BareaApp
                             this.#dynamicExpressionRegistry.set(attr.value, handlername);
                         }
 
-                        const tracking_obj = this.#createComputedDirective(templateid,el,attr.name,attr.value);
-
-                        //If root expression force root data to be executed
-                        if (!templatedata){
-                            tracking_obj.data=this.#appDataProxy;
-                        }else{
-                            tracking_obj.data=templatedata;
-                        }
-                        tracking_obj.key="";
                        
                         if (attr.name === BareaHelper.DIR_IF){
                             tracking_obj.elementnextsibling=el.nextSibling;
@@ -631,6 +635,7 @@ class BareaApp
                                 this.#computedPropertyNames.push(handlername);
                             }
                             tracking_obj.handlername=handlername;
+                            tracking_obj.iscomputed=true;
                             this.#computedProperties[tracking_obj.handlername].addDependenUserInterface(tracking_obj);
                             this.#runComputedFunction(tracking_obj);
 
@@ -665,6 +670,7 @@ class BareaApp
                                 this.#computedPropertyNames.push(handlername);
                             }
                             tracking_obj.handlername=handlername;
+                            tracking_obj.iscomputed=true;
                             this.#computedProperties[tracking_obj.handlername].addDependenUserInterface(tracking_obj);
                             this.#runComputedFunction(tracking_obj);
                            
@@ -703,6 +709,7 @@ class BareaApp
                                 this.#computedPropertyNames.push(handlername);
                             }
                             tracking_obj.handlername=handlername;
+                            tracking_obj.iscomputed=true;
                             this.#computedProperties[tracking_obj.handlername].addDependenUserInterface(tracking_obj);
                             this.#runComputedFunction(tracking_obj);
                         
@@ -712,7 +719,7 @@ class BareaApp
                     else if (BareaHelper.DIR_GROUP_TRACK_AND_FORGET.includes(attr.name))
                     {
                         const attribute_value_type = this.#getExpressionType(attr.value, attr.name);
-                        if (attribute_value_type==='INVALID')
+                        if (attribute_value_type===BareaHelper.EXPR_TYPE_INVALID)
                         {
                             console.error(`Then ${attr.name} directive has an invalid value (${attr.value}).`);
                             return;
@@ -750,7 +757,7 @@ class BareaApp
                     else if (BareaHelper.DIR_GROUP_MARKUP_GENERATION.includes(attr.name))
                     {
                         const attribute_value_type = this.#getExpressionType(attr.value, attr.name);
-                        if (attribute_value_type==='INVALID')
+                        if (attribute_value_type===BareaHelper.EXPR_TYPE_INVALID)
                         {
                             console.error(`Then ${attr.name} directive has an invalid value (${attr.value}).`);
                             return;
@@ -774,6 +781,7 @@ class BareaApp
                             .replace(/(\S)\s{2,}(\S)/g, '$1 $2'); // Reduce multiple spaces to one inside text nodes
         
                         const tracking_obj = this.#createTemplateDirective(templateid,el,attr.name,attr.value,null,"", el.parentElement,templateHtml, el.localName);
+                        tracking_obj.expressiontype = attribute_value_type;
                         if (attribute_value_type!==BareaHelper.EXPR_TYPE_COMPUTED)
                         {
                             let objpath = BareaHelper.getLastBareaObjectName(datapath);
@@ -815,13 +823,14 @@ class BareaApp
 
                             let path = expr.replaceAll('{','').replaceAll('}','').trim();
                             const attribute_value_type = instance.#getExpressionType(path,BareaHelper.DIR_INTERPOLATION);
-                            if (attribute_value_type==='INVALID')
+                            if (attribute_value_type===BareaHelper.EXPR_TYPE_INVALID)
                             {
                                 console.error(`The ${DIR_INTERPOLATION} directive has an invalid expression (${path}).`);
                                 return;
                             }
 
                             let tracking_obj = instance.#createInterpolationDirective(templateid,BareaHelper.DIR_INTERPOLATION,path,null,"",node, expr, node.nodeValue);
+                            tracking_obj.expressiontype = attribute_value_type;
                             if (attribute_value_type===BareaHelper.EXPR_TYPE_COMPUTED){
                                 tracking_obj.iscomputed = true;
                                 nodeexpressions.push(tracking_obj);
@@ -996,7 +1005,7 @@ class BareaApp
         return {id: id, isnew:true, templateid: templateid, directive:directive,  directivevalue:directivevalue, element: null, data:data, key:key, hashandler:false, handlername:"", inputtype:-1, iscomputed:false, interpolatednode: interpolatednode, expression: expression, nodetemplate:nodetemplate, nodeexpressions:[]  };
     }
 
-    #handleUITrackerNofify = (reasonobj, reasonkey, reasonvalue, path, resultset, arrayfuncargs) =>
+    #handleUITrackerNofify = (reasonobj, reasonkey, reasonvalue, path, resultset, reasonfuncname) =>
     {
         resultset.forEach(ui => 
         {
@@ -1037,16 +1046,25 @@ class BareaApp
             }   
             else if (BareaHelper.DIR_GROUP_MARKUP_GENERATION.includes(ui.directive)){
 
-                this.#renderTemplates(ui, path, reasonvalue, arrayfuncargs);  
+                if (!Array.isArray(reasonvalue)){
+                    console.error('Did not receive an array to render a template, should not happen if there is a god');
+                    return; 
+                }
+
+                if (reasonfuncname && BareaHelper.ARRAY_FUNCTIONS.includes(reasonfuncname))
+                    this.#renderTemplates(ui,path,null,reasonfuncname, reasonvalue); 
+                else
+                    this.#renderTemplates(ui,path,reasonvalue,"", null); 
+
             }
             else if (BareaHelper.DIR_GROUP_COMPUTED.includes(ui.directive))
             {
-                if (path)
-                {
-                    let principalpath = BareaHelper.getPrincipalBareaPath(path);
-                    if (!this.#computedPropertiesDependencyTracker.isDepencencyPath(principalpath, ui.handlername) && path !== BareaHelper.ROOT_OBJECT)
-                        return;
-                }
+                // if (path)
+                // {
+                //     let principalpath = BareaHelper.getPrincipalBareaPath(path);
+                //     if (!this.#computedPropertiesDependencyTracker.isDepencencyPath(principalpath, ui.handlername) && path !== BareaHelper.ROOT_OBJECT)
+                //         return;
+                // }
                 this.#runComputedFunction(ui);
             }
         });
@@ -1217,7 +1235,7 @@ class BareaApp
 
             let interpol_value = "";
             const attribute_value_type = this.#getExpressionType(ipstmt.directivevalue,BareaHelper.DIR_INTERPOLATION);
-            if (attribute_value_type==='INVALID')
+            if (attribute_value_type===BareaHelper.EXPR_TYPE_INVALID)
             {
                     console.error(`The ${BareaHelper.DIR_INTERPOLATION} directive has an invalid expression (${ipstmt.directivevalue}).`);
                     return;
@@ -1262,9 +1280,9 @@ class BareaApp
      * @param {string} key - The key in the parent affected object.
      * @param {any} target - The parent object of what's changed.
      */
-    #renderTemplates(ui, path='root', reasonvalue, arrayfuncargs) 
+    #renderTemplates(ui, path='root', reasonarray, arrayfuncname, arrayfuncargs) 
     {
-        let alwayRerender = true;
+        let always_rerender = true;
         let foreacharray = [];
      
 
@@ -1283,7 +1301,7 @@ class BareaApp
             if (this.#getExpressionType(datapath, ui.directive)===BareaHelper.EXPR_TYPE_COMPUTED)
             {
                 //If computed function always rerender
-                alwayRerender=true;
+                always_rerender=true;
 
                 if (this.#computedProperties[datapath])
                     foreacharray = this.#computedProperties[datapath].value;
@@ -1294,27 +1312,25 @@ class BareaApp
             else
             {
                 //If a new array is assigned always rerender
-                if (Array.isArray(reasonvalue) || (this.#isPrimitive(reasonvalue) && (reasonvalue === 'sort' || reasonvalue === 'reverse')))
-                    alwayRerender= true;
+                if (reasonarray || (arrayfuncname === 'sort' || arrayfuncname === 'reverse' || arrayfuncname === 'splice'))
+                    always_rerender = true;
              
                 //If not an assigned array or function on an array, skip
-                if (!(Array.isArray(reasonvalue) || (this.#isPrimitive(reasonvalue) && BareaHelper.ARRAY_FUNCTIONS.includes(reasonvalue))))
+                if (!reasonarray && !BareaHelper.ARRAY_FUNCTIONS.includes(arrayfuncname))
                     return;
 
+                if (reasonarray && always_rerender){
+                    foreacharray = reasonarray; 
+                }else{
+                    foreacharray = this.getProxifiedPathData(path);
+                }  
                
-                foreacharray = this.getProxifiedPathData(datapath); 
             }
 
-          
-            if (!Array.isArray(foreacharray)){
-                console.error('Could not get array in renderTemplates, should not happen if there is a god');
-                return; 
-            }
-               
-
+      
             //Re render template every time notified
            let counter=0;
-           if (alwayRerender)
+           if (always_rerender)
            {
                 //Clean all dependencies on templateid
                 this.#uiDependencyTracker.removeTemplateDependencies(ui.id);
@@ -1362,10 +1378,10 @@ class BareaApp
                 if (fragment.childElementCount>0)
                     ui.parentelement.appendChild(fragment);  
 
-                BareaHelper.ARRAY_FUNCTIONS.forEach(f=>
-                {
-                    this.#uiDependencyTracker.track('object', ui, foreacharray, f);
-                });
+                // BareaHelper.ARRAY_FUNCTIONS.forEach(f=>
+                // {
+                //     this.#uiDependencyTracker.track('object', ui, foreacharray, f);
+                // });
 
             }
             else
@@ -1373,42 +1389,42 @@ class BareaApp
             
                
 
-                if (reasonvalue === "push" && arrayfuncargs) {
+                if (arrayfuncname === "push" && arrayfuncargs) {
                     arrayfuncargs.forEach(item => {
-                        let newItem = this.#getTemplateElement(ui, varname, item);
-                        ui.parentelement.appendChild(newItem); // Only append, no full re-render
+                        let newItem = this.#getTemplateElement(ui, varname, item, foreacharray.length);
+                        ui.parentelement.appendChild(newItem);
                     });
                 } 
-                else if (reasonvalue === "unshift" && arrayfuncargs) {
+                else if (arrayfuncname === "unshift" && arrayfuncargs) {
                     arrayfuncargs.reverse().forEach(item => {
-                        let newItem = this.#getTemplateElement(ui, varname, item);
+                        let newItem = this.#getTemplateElement(ui, varname, item, 0);
                         ui.parentelement.insertBefore(newItem,  ui.parentelement.firstChild);
                     });
                 }
-                else if (reasonvalue === "pop") {
+                else if (arrayfuncname === "pop") {
                     this.#uiDependencyTracker.removeDependency(arrayfuncargs[0]);
                     ui.parentelement.removeChild( ui.parentelement.lastChild);
                 }
-                else if (reasonvalue === "shift") {
+                else if (arrayfuncname === "shift") {
                     this.#uiDependencyTracker.removeDependency(arrayfuncargs[0]);
                     ui.parentelement.removeChild( ui.parentelement.firstChild);
                 }
-                else if (reasonvalue === "splice" && arrayfuncargs) {
-                    let [start, deleteCount, ...newItems] = arrayfuncargs;
-                    let children = Array.from(ui.parentelement.children);
+                else if (arrayfuncname === "splice" && arrayfuncargs) {
+                    // let [start, deleteCount, ...newItems] = arrayfuncargs;
+                    // let children = Array.from(ui.parentelement.children);
             
-                    // Remove only the specified number of items
-                    for (let i = 0; i < deleteCount; i++) {
-                        this.#uiDependencyTracker.removeDependency(arrayfuncargs[i]);
-                        if (children[start]) ui.parentelement.removeChild(children[start]);
+                    // // Remove only the specified number of items
+                    // for (let i = 0; i < deleteCount; i++) {
+                    //     this.#uiDependencyTracker.removeDependency(arrayfuncargs[i]);
+                    //     if (children[start]) ui.parentelement.removeChild(children[start]);
                         
-                    }
+                    // }
             
-                    // Insert new items at the right position
-                    newItems.reverse().forEach(item => {
-                        let newItem = this.#getTemplateElement(ui, varname, item);
-                        ui.parentelement.insertBefore(newItem,  ui.parentelement.children[start] || null);
-                    });
+                    // // Insert new items at the right position
+                    // newItems.reverse().forEach(item => {
+                    //     let newItem = this.#getTemplateElement(ui, varname, item);
+                    //     ui.parentelement.insertBefore(newItem,  ui.parentelement.children[start] || null);
+                    // });
                 }
                
 
@@ -1417,22 +1433,46 @@ class BareaApp
                 {
                     let deps = this.#uiDependencyTracker.getDependencies(row);
                     deps.forEach(ui=>{
-                        ui.element.setAttribute(BareaHelper.META_ARRAY_INDEX, counter);
+                        if (ui.element){
+                            ui.element.setAttribute(BareaHelper.META_ARRAY_INDEX, counter);
+
+                            let templatechildren = ui.element.querySelectorAll("*"); 
+                            templatechildren.forEach(child => 
+                            {
+                                child.setAttribute(BareaHelper.META_IS_GENERATED_MARKUP, true);
+                                child.setAttribute(BareaHelper.META_ARRAY_VARNAME, varname);
+                                child.setAttribute(BareaHelper.META_ARRAY_INDEX, counter);
+                            
+                            });
+
+                        }
+                
                         counter++;
                     });
                 });
+
+                foreacharray.forEach(row => 
+                    {
+                        let deps = this.#uiDependencyTracker.getDependencies(row);
+
+                        deps.forEach(ui=>{
+                            if (ui.directive===BareaHelper.DIR_INTERPOLATION)
+                                this.#setInterpolation(ui);
+                        });
+                    });
               
             }
         
     }
 
-    #getTemplateElement(template, varname, row)
+    #getTemplateElement(template, varname, row, index)
     {
         this.#internalSystemCounter++;
         const newtag = document.createElement(template.templatetagname);
         newtag.innerHTML = template.templatemarkup;
         newtag.setAttribute(BareaHelper.META_IS_GENERATED_MARKUP, true);
         newtag.setAttribute(BareaHelper.META_ARRAY_VARNAME, varname);
+        newtag.setAttribute(BareaHelper.META_ARRAY_INDEX, index);
   
 
         if (newtag.id)
@@ -1445,6 +1485,7 @@ class BareaApp
         {
             child.setAttribute(BareaHelper.META_IS_GENERATED_MARKUP, true);
             child.setAttribute(BareaHelper.META_ARRAY_VARNAME, varname);
+            child.setAttribute(BareaHelper.META_ARRAY_INDEX, index);
 
             if (child.id)
                 child.id = child.id + `-${this.#internalSystemCounter}` 
@@ -1470,10 +1511,10 @@ class BareaApp
         if (BareaHelper.DIR_GROUP_BIND_TO_PATH.includes(directive))
         {
             if (expression.includes('(') || expression.includes(')'))
-                return "INVALID";
+                return BareaHelper.EXPR_TYPE_INVALID;
 
             if (!(expression.includes('.')))
-                return "INVALID";
+                return BareaHelper.EXPR_TYPE_INVALID;
 
             if (expression.toLowerCase().startsWith('root.'))
                 return BareaHelper.EXPR_TYPE_ROOT_PATH;
@@ -1484,7 +1525,7 @@ class BareaApp
         if ([BareaHelper.DIR_CLICK, BareaHelper.DIR_BIND_HANDLER].includes(directive))
         {
             if (!(expression.includes('(') && expression.includes(')')))
-                return "INVALID";
+                return BareaHelper.EXPR_TYPE_INVALID;
 
             return BareaHelper.EXPR_TYPE_HANDLER;
         }
@@ -1492,7 +1533,7 @@ class BareaApp
         if (BareaHelper.DIR_GROUP_COMPUTED.includes(directive))
         {
             if (expression.includes('(') || expression.includes(')'))
-                return "INVALID";
+                return BareaHelper.EXPR_TYPE_INVALID;
 
             if ((expression.includes('root.')))
             {
@@ -1516,13 +1557,13 @@ class BareaApp
             if (!(expression.includes('.')))
                 return BareaHelper.EXPR_TYPE_COMPUTED;
 
-            return "INVALID";
+            return BareaHelper.EXPR_TYPE_INVALID;
         }
 
         if (directive === BareaHelper.DIR_INTERPOLATION)
         {
             if (expression.includes('(') || expression.includes(')'))
-                return "INVALID";
+                return BareaHelper.EXPR_TYPE_INVALID;
 
             if (expression.toLowerCase() === BareaHelper.INTERPOL_INDEX)
                 return BareaHelper.INTERPOL_INDEX;
@@ -1540,7 +1581,7 @@ class BareaApp
         }
 
     
-        return "INVALID";
+        return BareaHelper.EXPR_TYPE_INVALID;
 
     }
 
@@ -1669,15 +1710,15 @@ class BareaApp
                 this.getter = func;
                 this.dirty = true;
                 this.dependencyPaths = new Set();
-                this.setDirty = (principalpath) => {
+                this.setDirty = (path) => {
                     this.dirty = true;
                     userinterface_tracker.notifyDependentUserInterface(this.userInterfaces);
                 };
             }
         
-            track(dep, principalpath) {
+            track(dep, path) {
                 dep.addSubscriber(this.name, this.setDirty); //The computed property tells that tracker: Hi i'm a new subscriber
-                this.dependencyPaths.add(principalpath);
+                this.dependencyPaths.add(path);
             }
 
             addDependenUserInterface(ui)
@@ -1774,12 +1815,16 @@ class BareaApp
                 if (principalpath===BareaHelper.ROOT_OBJECT)
                     return;
 
+                
+                let trackpath ="";
                 if (funcname)
-                    principalpath = principalpath+'.'+funcname.toLowerCase();
+                    trackpath = principalpath+'.'+funcname.toLowerCase();
+                else
+                    trackpath=objpath;
 
                 if (this.#activeComputed) {
-                    let dep = this.#getDependency(principalpath);
-                    this.#activeComputed.track(dep, principalpath);
+                    let dep = this.#getDependency(trackpath);
+                    this.#activeComputed.track(dep, trackpath);
                 }
             }
 
@@ -1797,26 +1842,30 @@ class BareaApp
                 if (principalpath===BareaHelper.ROOT_OBJECT)
                     return;
 
+                let trackpath ="";
                 if (funcname)
-                    principalpath = principalpath+'.'+funcname.toLowerCase();
+                    trackpath = principalpath+'.'+funcname.toLowerCase();
+                else
+                    trackpath=objpath;
 
-                let dep = this.#getDependency(principalpath);
-                    dep.notify(principalpath);
+
+                let dep = this.#getDependency(trackpath);
+                    dep.notify(trackpath);
             }
 
-            #getDependency(principalpath) 
+            #getDependency(path) 
             {
-                let dep = this.#dependencies.get(principalpath);
+                let dep = this.#dependencies.get(path);
                 if (!dep) {
-                    dep = this.#createDependency(principalpath);
+                    dep = this.#createDependency(path);
 
-                    this.#dependencies.set(principalpath, dep);
+                    this.#dependencies.set(path, dep);
                 }
 
                 return dep;
             }
 
-            #createDependency(principalpath) 
+            #createDependency(path) 
             {
                 let subscribers = new Map();
                 return {
@@ -1828,9 +1877,9 @@ class BareaApp
                             //console.log(`${name} is subscribing to path: ${principalpath}`);
                         }
                     },
-                    notify(principalpath) { 
+                    notify(path) { 
                         subscribers.forEach((set_dirty_func, name) => {
-                            set_dirty_func(principalpath); 
+                            set_dirty_func(path); 
                             //console.log(`Notified ${name} with path: ${principalpath}`);
                         });
                     }
@@ -1894,6 +1943,7 @@ class BareaApp
                 for (let i = 0; i < keystodelete.length-1; i++)
                     this.#dependencies.delete(keystodelete[i]);
 
+                //Remove ui:s from computed functions too
                 Object.keys(computedProperties).forEach(key => {
                     //Create an array before deleting in the set
                     for (let directive of [...computedProperties[key].userInterfaces]) {
@@ -1923,21 +1973,18 @@ class BareaApp
 
             getDependencies(object)
             {
-                let returndependencies = [];
-                let connectedkeys = [];
+                let connectedui = [];
                 this.#dependencies.forEach((value, key) => 
                 {
                     for (const item of value) 
                     {
-                        if (this.#objectReference.has(object)) 
-                            connectedkeys.push(key);
+                        if (this.#objectReference.has(object) && object === item.data) 
+                            connectedui.push(item);
                     }       
                 });
 
-                for (let i = 0; i < connectedkeys.length-1; i++)
-                    returndependencies.push(connectedkeys[i]);
 
-                return returndependencies;
+                return connectedui;
             } 
 
             getAllDependencies()
@@ -2090,6 +2137,7 @@ class BareaHelper
     static EXPR_TYPE_OBJREF_EXPR = 'objexpr';
     static EXPR_TYPE_ROOT_EXPR = 'rootexpr';
     static EXPR_TYPE_MIX_EXPR = 'mixexpr';
+    static EXPR_TYPE_INVALID = 'invalid';
 
     //The root of your data
     static ROOT_OBJECT = 'root';
