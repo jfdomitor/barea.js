@@ -7,6 +7,9 @@
  * 
  * Copyright (c) 2025 Johan Filipsson
  */
+
+"use strict";
+
 const getBareaApp = function(enableInternalId){
     return new BareaApp(enableInternalId);
 }
@@ -850,14 +853,11 @@ class BareaApp
                         
                         if (nodeexpressions.length>0)
                         {
-                            //Important track per node, not per expression, must render per node
-                            let tracking_obj = nodeexpressions[0];
-                            tracking_obj.nodeexpressions = nodeexpressions;
-
+                            //Important must render per node so multiple expressions in one node leads to double tracking
                             nodeexpressions.forEach(ne=>{
                                 ne.nodeexpressions = nodeexpressions;
                                 if (ne.iscomputed){
-                                    instance.#computedProperties[ne.directivevalue].addDependenUserInterface(tracking_obj);
+                                    instance.#computedProperties[ne.directivevalue].addDependenUserInterface(ne);
                                 }else if (ne.key){
                                     instance.#uiDependencyTracker.track('value', ne);
                                 }else if  (ne.data) {
@@ -1290,11 +1290,6 @@ class BareaApp
                 else
                     console.warn(`Could not find computed function name in the ${ui.directive} directive`);
 
-                //This template is based on a computed array
-                //If the incoming path is not a dependency of the computed property, then return
-                let principalpath = BareaHelper.getPrincipalBareaPath(path);
-                if (!this.#computedPropertiesDependencyTracker.isDepencencyPath(principalpath, datapath) && path !== BareaHelper.ROOT_OBJECT)
-                    return;
             }
             else
             {
@@ -1667,7 +1662,7 @@ class BareaApp
         let userinterface_tracker = this.#uiDependencyTracker;
         class BareaComputedProperty
         {
-            #userInterfaces = new Set();
+            userInterfaces = new Set();
 
             constructor(func, funcname) {
                 this.name=funcname;
@@ -1676,7 +1671,7 @@ class BareaApp
                 this.dependencyPaths = new Set();
                 this.setDirty = (principalpath) => {
                     this.dirty = true;
-                    userinterface_tracker.notifyDependentUserInterface(this.#userInterfaces);
+                    userinterface_tracker.notifyDependentUserInterface(this.userInterfaces);
                 };
             }
         
@@ -1687,7 +1682,7 @@ class BareaApp
 
             addDependenUserInterface(ui)
             {
-                this.#userInterfaces.add(ui);
+                this.userInterfaces.add(ui);
             }
         
             get value() 
@@ -1851,7 +1846,7 @@ class BareaApp
     #getUserInterfaceTracker(notifycallback)
     {
         let instance;
-
+        let computedProperties = this.#computedProperties;
         class UserInterfaceTracker
         {
             #dependencies = new Map();
@@ -1898,6 +1893,14 @@ class BareaApp
 
                 for (let i = 0; i < keystodelete.length-1; i++)
                     this.#dependencies.delete(keystodelete[i]);
+
+                Object.keys(computedProperties).forEach(key => {
+                    //Create an array before deleting in the set
+                    for (let directive of [...computedProperties[key].userInterfaces]) {
+                        if (directive.templateid===templateid)
+                            computedProperties[key].userInterfaces.delete(directive);
+                    }
+                });
 
             }
 
