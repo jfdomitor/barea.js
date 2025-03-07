@@ -613,9 +613,7 @@ class BareaApp
                             tracking_obj.key=getLastBareaKeyName(attr.value);
                         }
 
-                        if (templatedata)
-                            tracking_obj.scopedata=templatedata;
-                    
+                
                         let handlername = el.getAttribute(DIR_BIND_HANDLER);
                         if (handlername)
                         {
@@ -728,7 +726,7 @@ class BareaApp
                             this.#dynamicExpressionRegistry.set(attr.value, handlername);
                         }
 
-                        const tracking_obj = this.#createUiTrackingObject(templateid,el,attr.name,attr.value,null,"",-1);
+                        const tracking_obj = this.#createComputedDirective(templateid,el,attr.name,attr.value);
 
                         //If root expression force root data to be executed
                         if (!templatedata){
@@ -736,13 +734,8 @@ class BareaApp
                         }else{
                             tracking_obj.data=templatedata;
                         }
-
-                        //Important
-                        tracking_obj.key=""; //Not needed in functions
-                        if (templatedata){
-                            tracking_obj.scopedata = templatedata;
-                        }
-
+                        tracking_obj.key="";
+                       
                         if (attr.name === DIR_IF){
                             tracking_obj.elementnextsibling=el.nextSibling;
                             tracking_obj.parentelement=el.parentElement;
@@ -1017,19 +1010,13 @@ class BareaApp
 
                                 instance.#setInterpolation(ne);
 
-                            });
-                           
-                           
-                           
+                            }); 
                          
                         }
-                       
-                       
                        
                     }
                 }
                 
-                // Traverse child nodes
                 for (let child of node.childNodes) {
                     traverseNodes(child, instance);
                 }
@@ -1131,20 +1118,26 @@ class BareaApp
       
     }
 
+    #createComputedDirective(templateid, element, directive, directivevalue)
+    {
+        let id = this.#internalSystemCounter++;
+        return {id: id, isnew:true, templateid: templateid, directive:directive,  directivevalue:directivevalue, element: element, data:null, key:"", hashandler:false, handlername:"", inputtype:-1, iscomputed:true };
+    }
+
     #createUiTrackingObject(templateid, element, directive, directivevalue, data, key, inputtype)
     {
         let id = this.#internalSystemCounter++;
-        return {id: id, isnew:true, templateid: templateid, directive:directive,  directivevalue:directivevalue, element: element, data:data, key:key, hashandler:false, handlername:"", inputtype:inputtype };
+        return {id: id, isnew:true, templateid: templateid, directive:directive,  directivevalue:directivevalue, element: element, data:data, key:key, hashandler:false, handlername:"", inputtype:inputtype,iscomputed:false };
     }
     #createUiTemplateTrackingObject(templateid, element, directive, directivevalue, data, key,  parentelement, templatemarkup, templatetagname)
     {
         let id = this.#internalSystemCounter++;
-        return {id: id, isnew:true, templateid: templateid, directive:directive,  directivevalue:directivevalue, element: element, data:data, key:key, hashandler:false, handlername:"", inputtype:-1, parentelement : parentelement, templatemarkup : templatemarkup, templatetagname : templatetagname };
+        return {id: id, isnew:true, templateid: templateid, directive:directive,  directivevalue:directivevalue, element: element, data:data, key:key, hashandler:false, handlername:"", inputtype:-1, iscomputed:false, parentelement : parentelement, templatemarkup : templatemarkup, templatetagname : templatetagname };
     }
     #createUiInterpolationTrackingObject(templateid, directive, directivevalue, data, key,interpolatednode, expression, nodetemplate)
     {
         let id = this.#internalSystemCounter++;
-        return {id: id, isnew:true, templateid: templateid, directive:directive,  directivevalue:directivevalue, element: null, data:data, key:key, hashandler:false, handlername:"", inputtype:-1, interpolatednode: interpolatednode, expression: expression, nodetemplate:nodetemplate  };
+        return {id: id, isnew:true, templateid: templateid, directive:directive,  directivevalue:directivevalue, element: null, data:data, key:key, hashandler:false, handlername:"", inputtype:-1, iscomputed:false, interpolatednode: interpolatednode, expression: expression, nodetemplate:nodetemplate, nodeexpressions:[]  };
     }
 
     #handleUITrackerNofify = (reasonobj, reasonkey, reasonvalue, path, resultset, arrayfuncargs) =>
@@ -2125,12 +2118,8 @@ Unshift problem
                 if (DIR_GROUP_COMPUTED.includes(ui.directive))
                     return;
 
-                //Used for dynamic functions, the should only execute when the object theyre on is notified
-                //ui.data = where the function should work, ui.scopedata = where the function resides
-                let object = ui.data;
-                if (ui.scopedata)
-                    object=ui.scopedata;
-
+                const object = ui.data;
+              
                 let depKey="";
                 if (scope==='value')
                 {
