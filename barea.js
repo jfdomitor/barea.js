@@ -171,7 +171,6 @@ class BareaApp
     #enableBareaId = false;
     #enableInterpolation = true;
     #enableHideUnloaded=false;
-    #enableComputedProperties=false;
 
     //UI
     #uiDependencyTracker=null;
@@ -239,7 +238,6 @@ class BareaApp
         if (content.computed) {
             Object.keys(content.computed).forEach(key => {
                 if (typeof content.computed[key] === "function") {
-                    this.#enableComputedProperties=true;
                     this.#computedProperties[key] = this.#getNewComputedProperty(content.computed[key], key);
                     this.#computedPropertyNames.push(key);
                 }
@@ -429,21 +427,19 @@ class BareaApp
 
                 const newPath = Array.isArray(target) ? `${currentpath}[${key}]` : `${currentpath}.${key}`;
               
-                if (this.#enableComputedProperties)
-                {
-                    //They will only be tracked if the computed function is run
-                    //The function activates tracking
-                    if(typeof value === "function" && ARRAY_FUNCTIONS.includes(value.name))
-                        this.#computedPropertiesDependencyTracker.track(newPath, value.name);
-                    else
-                        this.#computedPropertiesDependencyTracker.track(newPath, null);
+                //They will only be tracked if the computed function is run
+                //The function activates tracking
+                if(typeof value === "function" && ARRAY_FUNCTIONS.includes(value.name))
+                    this.#computedPropertiesDependencyTracker.track(newPath, value.name);
+                else
+                    this.#computedPropertiesDependencyTracker.track(newPath, null);
 
-                    if (Array.isArray(target))
-                    {
-                        //These won't be detected otherwise
-                        ARRAY_FUNCTIONS.forEach(f=>{ this.#computedPropertiesDependencyTracker.track(currentpath, f);});
-                    }
+                if (Array.isArray(target))
+                {
+                    //These won't be detected otherwise
+                    ARRAY_FUNCTIONS.forEach(f=>{ this.#computedPropertiesDependencyTracker.track(currentpath, f);});
                 }
+                
                
                 if (typeof value === 'object' && value !== null) 
                 {
@@ -497,13 +493,10 @@ class BareaApp
                                     //const result = Array.prototype[value.name].apply(target, proxiedArgs);
                                     const result = value.apply(target, args); 
 
-                                    if (this.#enableComputedProperties)
-                                        this.#computedPropertiesDependencyTracker.notify(currentpath, value.name);
+                                    this.#computedPropertiesDependencyTracker.notify(currentpath, value.name);
 
-                                    //callback(currentpath, parentobj, parentkey, proxiedArgs, key);
                                     callback(currentpath, receiver, '', args, value.name);
 
-                                    
                                     return result;
                                 });
                             }
@@ -529,14 +522,12 @@ class BareaApp
         
                 target[key] = value;
 
-                if (this.#enableComputedProperties)
-                {
-                    if(typeof value === "function"  && ARRAY_FUNCTIONS.includes(value.name))
-                        this.#computedPropertiesDependencyTracker.notify(newPath, value.name);
-                    else
-                        this.#computedPropertiesDependencyTracker.notify(newPath, null);
+                if(typeof value === "function"  && ARRAY_FUNCTIONS.includes(value.name))
+                    this.#computedPropertiesDependencyTracker.notify(newPath, value.name);
+                else
+                    this.#computedPropertiesDependencyTracker.notify(newPath, null);
 
-                }
+                
                  
                 //Out puts raw data (no proxy here)
                 callback(newPath, receiver, key, receiver[key]);
@@ -759,9 +750,7 @@ class BareaApp
             
                         if (attribute_value_type === EXPR_TYPE_COMPUTED)
                         {
-                            //The tracking_obj.data data isn't used, scope=object or maybe=global
                             tracking_obj.handlername=condition;
-                            this.#uiDependencyTracker.track('global', tracking_obj);
                             this.#computedProperties[tracking_obj.handlername].addDependenUserInterface(tracking_obj);
                             this.#runComputedFunction(tracking_obj);
                         }
@@ -783,7 +772,6 @@ class BareaApp
                                 return evalRootExpr(condition, evalobj);
                             }
 
-                            this.#enableComputedProperties=true;
                             if (isnewhandler)
                             {
                                 this.#computedProperties[handlername] = this.#getNewComputedProperty(boolRootFunc,handlername);
@@ -791,7 +779,6 @@ class BareaApp
                             }
                             tracking_obj.handlername=handlername;
                             this.#computedProperties[tracking_obj.handlername].addDependenUserInterface(tracking_obj);
-                            this.#uiDependencyTracker.track('global', tracking_obj);
                             this.#runComputedFunction(tracking_obj);
 
                         }
@@ -819,7 +806,6 @@ class BareaApp
                                 return;
                             }
 
-                            this.#enableComputedProperties=true;
                             if (isnewhandler)
                             {
                                 this.#computedProperties[handlername] = this.#getNewComputedProperty(boolObjFunc,handlername);
@@ -827,7 +813,6 @@ class BareaApp
                             }
                             tracking_obj.handlername=handlername;
                             this.#computedProperties[tracking_obj.handlername].addDependenUserInterface(tracking_obj);
-                            this.#uiDependencyTracker.track('global', tracking_obj);
                             this.#runComputedFunction(tracking_obj);
                            
                         }  
@@ -859,7 +844,6 @@ class BareaApp
                                 return;
                             }
 
-                            this.#enableComputedProperties=true;
                             if (isnewhandler)
                             {
                                 this.#computedProperties[handlername] = this.#getNewComputedProperty(boolMixedFunc,handlername);
@@ -867,7 +851,6 @@ class BareaApp
                             }
                             tracking_obj.handlername=handlername;
                             this.#computedProperties[tracking_obj.handlername].addDependenUserInterface(tracking_obj);
-                            this.#uiDependencyTracker.track('global', tracking_obj);
                             this.#runComputedFunction(tracking_obj);
                         
                         }
@@ -949,12 +932,14 @@ class BareaApp
                                 console.error(`could not find array for ${datapath} in  ${attr.name} directive`);
                                 return;
                             }
+                            this.#uiDependencyTracker.track('value', tracking_obj);
                            
                         }else{
                             this.#computedProperties[datapath].addDependenUserInterface(tracking_obj);
+                            this.#uiDependencyTracker.track('computed', tracking_obj);
                         }
 
-                        this.#uiDependencyTracker.track('value', tracking_obj);
+                
                         this.#renderTemplates(tracking_obj);
                           
                     }
@@ -1020,15 +1005,22 @@ class BareaApp
                             let tracking_obj = nodeexpressions[0];
                             tracking_obj.nodeexpressions = nodeexpressions;
 
-                            if (!tracking_obj.data || tracking_obj.iscomputed || nodeexpressions.some(t=>t.iscomputed)){
-                                instance.#uiDependencyTracker.track('global', tracking_obj);
-                            }else if (tracking_obj.key){
-                                instance.#uiDependencyTracker.track('value', tracking_obj);
-                            }else{
-                                instance.#uiDependencyTracker.track('object', tracking_obj);
-                            }
+                            nodeexpressions.forEach(ne=>{
+                                ne.nodeexpressions = nodeexpressions;
+                                if (ne.iscomputed){
+                                    instance.#computedProperties[ne.directivevalue].addDependenUserInterface(tracking_obj);
+                                }else if (ne.key){
+                                    instance.#uiDependencyTracker.track('value', ne);
+                                }else if  (ne.data) {
+                                    instance.#uiDependencyTracker.track('object', ne);
+                                }
+
+                                instance.#setInterpolation(ne);
+
+                            });
                            
-                            instance.#setInterpolation(tracking_obj);
+                           
+                           
                          
                         }
                        
@@ -2148,19 +2140,18 @@ Unshift problem
                 {
                     depKey = this.#getObjectId(object).id + ":object:"; 
                 }
-                else if (scope==='global')
-                {
-                    depKey = "global"; 
-                }
 
+                if (!depKey)
+                    return false;
+                
                 if (!this.#dependencies.has(depKey)) 
                 {
                     this.#dependencies.set(depKey, new Set());
                 }
                 this.#dependencies.get(depKey).add(ui);
 
-               
-             
+                return true;
+
             }
 
             notify(path, reasonobj, reasonkey, reasonvalue, reasonfuncname) 
@@ -2179,13 +2170,9 @@ Unshift problem
                     let objectset = this.#dependencies.get(depKey);
                     if (!objectset)
                         objectset= new Set();
-    
-                    depKey = "global";
-                    let globalset = this.#dependencies.get(depKey);
-                    if (!globalset)
-                        globalset= new Set();
-    
-                    let resultset = new Set([...valueset, ...objectset, ...globalset]);
+
+                
+                    let resultset = new Set([...valueset, ...objectset]);
                     if (resultset.length===0)
                         return;
     
@@ -2194,6 +2181,7 @@ Unshift problem
                 else
                 {
                   //Shouldn't happen
+                  console.warn('UI dependency tracker was notified of an object that was not tracked', reasonobj);
 
                 }
               
