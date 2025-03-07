@@ -600,7 +600,7 @@ class BareaApp
                             }
                         }
 
-                        let tracking_obj = this.#createUiTrackingObject(templateid,el,attr.name,attr.value,null,"",systeminput);
+                        let tracking_obj = this.#createInputDirective(templateid,el,attr.name,attr.value,null,"",systeminput);
                 
                         //If root is included in the attr.value, example root.model.users.name
                         //Then we will bind to the root even if this is a template node
@@ -611,6 +611,11 @@ class BareaApp
                         }else{
                             tracking_obj.data=templatedata;
                             tracking_obj.key=getLastBareaKeyName(attr.value);
+                        }
+
+                        if (!tracking_obj.data || !tracking_obj.key){
+                            console.error(`Could not track directive ${attr.name}${attr.value} could not match data at the given path`);
+                            return;
                         }
 
                 
@@ -913,7 +918,7 @@ class BareaApp
                             .replace(/>\s+</g, '><')  // Remove spaces between tags
                             .replace(/(\S)\s{2,}(\S)/g, '$1 $2'); // Reduce multiple spaces to one inside text nodes
         
-                        const tracking_obj = this.#createUiTemplateTrackingObject(templateid,el,attr.name,attr.value,null,"", el.parentElement,templateHtml, el.localName);
+                        const tracking_obj = this.#createTemplateDirective(templateid,el,attr.name,attr.value,null,"", el.parentElement,templateHtml, el.localName);
                         if (attribute_value_type!==EXPR_TYPE_COMPUTED)
                         {
                             let objpath = getLastBareaObjectName(datapath);
@@ -932,7 +937,6 @@ class BareaApp
                             this.#uiDependencyTracker.track('computed', tracking_obj);
                         }
 
-                
                         this.#renderTemplates(tracking_obj);
                           
                     }
@@ -962,7 +966,7 @@ class BareaApp
                                 return;
                             }
 
-                            let tracking_obj = instance.#createUiInterpolationTrackingObject(templateid,DIR_INTERPOLATION,path,null,"",node, expr, node.nodeValue);
+                            let tracking_obj = instance.#createInterpolationDirective(templateid,DIR_INTERPOLATION,path,null,"",node, expr, node.nodeValue);
                             if (attribute_value_type===EXPR_TYPE_COMPUTED){
                                 tracking_obj.iscomputed = true;
                                 nodeexpressions.push(tracking_obj);
@@ -1124,17 +1128,17 @@ class BareaApp
         return {id: id, isnew:true, templateid: templateid, directive:directive,  directivevalue:directivevalue, element: element, data:null, key:"", hashandler:false, handlername:"", inputtype:-1, iscomputed:true };
     }
 
-    #createUiTrackingObject(templateid, element, directive, directivevalue, data, key, inputtype)
+    #createInputDirective(templateid, element, directive, directivevalue, data, key, inputtype)
     {
         let id = this.#internalSystemCounter++;
         return {id: id, isnew:true, templateid: templateid, directive:directive,  directivevalue:directivevalue, element: element, data:data, key:key, hashandler:false, handlername:"", inputtype:inputtype,iscomputed:false };
     }
-    #createUiTemplateTrackingObject(templateid, element, directive, directivevalue, data, key,  parentelement, templatemarkup, templatetagname)
+    #createTemplateDirective(templateid, element, directive, directivevalue, data, key,  parentelement, templatemarkup, templatetagname)
     {
         let id = this.#internalSystemCounter++;
         return {id: id, isnew:true, templateid: templateid, directive:directive,  directivevalue:directivevalue, element: element, data:data, key:key, hashandler:false, handlername:"", inputtype:-1, iscomputed:false, parentelement : parentelement, templatemarkup : templatemarkup, templatetagname : templatetagname };
     }
-    #createUiInterpolationTrackingObject(templateid, directive, directivevalue, data, key,interpolatednode, expression, nodetemplate)
+    #createInterpolationDirective(templateid, directive, directivevalue, data, key,interpolatednode, expression, nodetemplate)
     {
         let id = this.#internalSystemCounter++;
         return {id: id, isnew:true, templateid: templateid, directive:directive,  directivevalue:directivevalue, element: null, data:data, key:key, hashandler:false, handlername:"", inputtype:-1, iscomputed:false, interpolatednode: interpolatednode, expression: expression, nodetemplate:nodetemplate, nodeexpressions:[]  };
