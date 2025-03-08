@@ -482,7 +482,7 @@ class BareaApp
                         
                         this.#uiDependencyTracker.track('value', tracking_obj);
 
-                            if (BareaHelper.DIR_GROUP_UI_DUPLEX.includes(tracking_obj.directive))
+                            if (BareaHelper.DIR_GROUP_UI_DUPLEX.includes(tracking_obj.directivename))
                             {
                                 if (tracking_obj.hashandler)
                                     this.#runBindHandler(BareaHelper.VERB_SET_UI, tracking_obj);
@@ -497,7 +497,7 @@ class BareaApp
                                     this.#setInputRadio(tracking_obj);
                                 }
 
-                                let eventtype = (tracking_obj.directive===BareaHelper.DIR_BIND) ? "input" : "blur";
+                                let eventtype = (tracking_obj.directivename===BareaHelper.DIR_BIND) ? "input" : "blur";
                                 el.addEventListener(eventtype, (event) => {
 
                                     if (tracking_obj.hashandler)
@@ -532,15 +532,15 @@ class BareaApp
                                    
                                 
                             }
-                            else if (tracking_obj.directive===BareaHelper.DIR_CLASS){
+                            else if (tracking_obj.directivename===BareaHelper.DIR_CLASS){
                                 let classnames = el.getAttribute('classNames');
                                 tracking_obj.orgvalue=classnames;
                                 this.#setClass(tracking_obj);
                             }
-                            else if (tracking_obj.directive===BareaHelper.DIR_HREF){
+                            else if (tracking_obj.directivename===BareaHelper.DIR_HREF){
                                 this.#setHref(tracking_obj);
                             }
-                            else if (tracking_obj.directive===BareaHelper.DIR_IMAGE_SRC){
+                            else if (tracking_obj.directivename===BareaHelper.DIR_IMAGE_SRC){
                                 this.#setSrc(tracking_obj);
                             }
                           
@@ -594,7 +594,7 @@ class BareaApp
                         if (attribute_value_type === BareaHelper.EXPR_TYPE_COMPUTED)
                         {
                             tracking_obj.handlername=condition;
-                            this.#computedProperties[tracking_obj.handlername].addDependenUserInterface(tracking_obj);
+                            this.#computedProperties[tracking_obj.handlername].addDependentDirective(tracking_obj);
                             this.#runComputedFunction(tracking_obj);
                         }
                         else if (attribute_value_type === BareaHelper.EXPR_TYPE_ROOT_EXPR){
@@ -622,7 +622,7 @@ class BareaApp
                             }
                             tracking_obj.handlername=handlername;
                             tracking_obj.iscomputed=true;
-                            this.#computedProperties[tracking_obj.handlername].addDependenUserInterface(tracking_obj);
+                            this.#computedProperties[tracking_obj.handlername].addDependentDirective(tracking_obj);
                             this.#runComputedFunction(tracking_obj);
 
                         }
@@ -657,7 +657,7 @@ class BareaApp
                             }
                             tracking_obj.handlername=handlername;
                             tracking_obj.iscomputed=true;
-                            this.#computedProperties[tracking_obj.handlername].addDependenUserInterface(tracking_obj);
+                            this.#computedProperties[tracking_obj.handlername].addDependentDirective(tracking_obj);
                             this.#runComputedFunction(tracking_obj);
                            
                         }  
@@ -696,7 +696,7 @@ class BareaApp
                             }
                             tracking_obj.handlername=handlername;
                             tracking_obj.iscomputed=true;
-                            this.#computedProperties[tracking_obj.handlername].addDependenUserInterface(tracking_obj);
+                            this.#computedProperties[tracking_obj.handlername].addDependentDirective(tracking_obj);
                             this.#runComputedFunction(tracking_obj);
                         
                         }
@@ -782,7 +782,7 @@ class BareaApp
                             this.#uiDependencyTracker.track('value', tracking_obj);
                            
                         }else{
-                            this.#computedProperties[datapath].addDependenUserInterface(tracking_obj);
+                            this.#computedProperties[datapath].addDependentDirective(tracking_obj);
                             this.#uiDependencyTracker.track('computed', tracking_obj);
                         }
 
@@ -795,91 +795,91 @@ class BareaApp
 
         });
 
-      
-            let nodes_with_expressions = this.#getInterplationNodesAndExpressions(tag);
-            nodes_with_expressions.forEach(inode=>
+        let nodes_with_expressions = this.#getInterplationNodesAndExpressions(tag);
+        nodes_with_expressions.forEach(inode=>
+        {
+
+            let node = inode.textNode;
+            let nodeexpressions = [];
+            inode.expressions.forEach(expr=>
             {
 
-                let node = inode.textNode;
-                let nodeexpressions = [];
-                inode.expressions.forEach(expr=>
+                let path = expr.replaceAll('{','').replaceAll('}','').trim();
+                const attribute_value_type = this.#getExpressionType(path,BareaHelper.DIR_INTERPOLATION, trackcontext.renderedvarname);
+                if (attribute_value_type===BareaHelper.EXPR_TYPE_INVALID)
                 {
-
-                    let path = expr.replaceAll('{','').replaceAll('}','').trim();
-                    const attribute_value_type = this.#getExpressionType(path,BareaHelper.DIR_INTERPOLATION, trackcontext.renderedvarname);
-                    if (attribute_value_type===BareaHelper.EXPR_TYPE_INVALID)
-                    {
-                        console.error(`The ${DIR_INTERPOLATION} directive has an invalid expression (${path}).`);
-                        return;
-                    }
-
-                    let tracking_obj = this.#createInterpolationDirective(trackcontext,BareaHelper.DIR_INTERPOLATION,path,null,"",node, expr, node.nodeValue);
-                    tracking_obj.expressiontype = attribute_value_type;
-                    if (attribute_value_type===BareaHelper.EXPR_TYPE_COMPUTED){
-                        tracking_obj.isrendered = false;
-                        tracking_obj.iscomputed = true;
-                        nodeexpressions.push(tracking_obj);
-                    }
-                    else if ([BareaHelper.EXPR_TYPE_ROOT_PATH,BareaHelper.EXPR_TYPE_OBJREF,BareaHelper.EXPR_TYPE_OBJREF_PATH].includes(attribute_value_type))
-                    {
-                        //Find data
-                        let objpath=BareaHelper.ROOT_OBJECT;
-                        if (!trackcontext.rendereddata || path.startsWith(BareaHelper.ROOT_OBJECT)){
-                            objpath = BareaHelper.getLastBareaObjectName(path);
-                            tracking_obj.data=this.getProxifiedPathData(objpath);
-                        }else{
-                            tracking_obj.data = trackcontext.rendereddata;
-                        }
-
-                        //Find key
-                        tracking_obj.key="";
-                        let interpolation_key = BareaHelper.getLastBareaKeyName(path);
-                        if (interpolation_key!==BareaHelper.OBJECT && interpolation_key!==objpath){
-                            tracking_obj.key=interpolation_key;
-                        }
-
-                        tracking_obj.isrendered = false;
-                        tracking_obj.iscomputed = false;
-                        nodeexpressions.push(tracking_obj);
-                          
-                    }
-                    else if (BareaHelper.INTERPOL_INDEX===attribute_value_type)
-                    {
-                        //Wont be tracked
-                        tracking_obj.isrendered = true;
-                        tracking_obj.iscomputed = false;
-                        tracking_obj.data = trackcontext.rendereddata;
-                        nodeexpressions.push(tracking_obj); 
-                        if (trackcontext.template)  
-                            trackcontext.template.userenderedinterpolation = true;
-                    }
-                            
-                });  
-                        
-                if (nodeexpressions.length>0)
-                {
-                    //Important must render per node so multiple expressions in one node leads to double tracking
-                    nodeexpressions.forEach(ne=>
-                    {
-                        ne.nodeexpressions = nodeexpressions;
-                        if (ne.isrendered){
-                            this.#uiDependencyTracker.track('nontrackable', ne);
-                        }
-                        else if (ne.iscomputed && this.#computedProperties[ne.directivevalue]){
-                            this.#computedProperties[ne.directivevalue].addDependenUserInterface(ne);
-                        }else if (ne.key){
-                            this.#uiDependencyTracker.track('value', ne);
-                        }else if  (ne.data) {
-                            this.#uiDependencyTracker.track('object', ne);
-                        }
-
-                        this.#setInterpolation(ne);
-
-                    }); 
-                         
+                    console.error(`The ${DIR_INTERPOLATION} directive has an invalid expression (${path}).`);
+                    return;
                 }
-                       
-            });
+
+                let tracking_obj = this.#createInterpolationDirective(trackcontext,BareaHelper.DIR_INTERPOLATION,path,null,"",node, expr, node.nodeValue);
+                tracking_obj.expressiontype = attribute_value_type;
+                if (attribute_value_type===BareaHelper.EXPR_TYPE_COMPUTED){
+                    tracking_obj.isrendered = false;
+                    tracking_obj.iscomputed = true;
+                    nodeexpressions.push(tracking_obj);
+                }
+                else if ([BareaHelper.EXPR_TYPE_ROOT_PATH,BareaHelper.EXPR_TYPE_OBJREF,BareaHelper.EXPR_TYPE_OBJREF_PATH].includes(attribute_value_type))
+                {
+                    //Find data
+                    let objpath=BareaHelper.ROOT_OBJECT;
+                    if (!trackcontext.rendereddata || path.startsWith(BareaHelper.ROOT_OBJECT)){
+                        objpath = BareaHelper.getLastBareaObjectName(path);
+                        tracking_obj.data=this.getProxifiedPathData(objpath);
+                    }else{
+                        tracking_obj.data = trackcontext.rendereddata;
+                    }
+
+                    //Find key
+                    tracking_obj.key="";
+                    let interpolation_key = BareaHelper.getLastBareaKeyName(path);
+                    if (interpolation_key!==BareaHelper.OBJECT && interpolation_key!==objpath){
+                        tracking_obj.key=interpolation_key;
+                    }
+
+                    tracking_obj.isrendered = false;
+                    tracking_obj.iscomputed = false;
+                    nodeexpressions.push(tracking_obj);
+                      
+                }
+                else if (BareaHelper.INTERPOL_INDEX===attribute_value_type)
+                {
+                    //Wont be tracked
+                    tracking_obj.isrendered = true;
+                    tracking_obj.iscomputed = false;
+                    tracking_obj.data = trackcontext.rendereddata;
+                    nodeexpressions.push(tracking_obj); 
+                    if (trackcontext.template)  
+                        trackcontext.template.userenderedinterpolation = true;
+                }
+                        
+            });  
+                    
+            if (nodeexpressions.length>0)
+            {
+                //Important must render per node so multiple expressions in one node leads to double tracking
+                nodeexpressions.forEach(ne=>
+                {
+                    ne.nodeexpressions = nodeexpressions;
+                    if (ne.isrendered){
+                        this.#uiDependencyTracker.track('nontrackable', ne);
+                    }
+                    else if (ne.iscomputed && this.#computedProperties[ne.directivevalue]){
+                        this.#computedProperties[ne.directivevalue].addDependentDirective(ne);
+                    }else if (ne.key){
+                        this.#uiDependencyTracker.track('value', ne);
+                    }else if  (ne.data) {
+                        this.#uiDependencyTracker.track('object', ne);
+                    }
+
+                    this.#setInterpolation(ne);
+
+                }); 
+                     
+            }
+                   
+        });  
+            
        
            
         let log = this.#getConsoleLog(4);
@@ -991,68 +991,68 @@ class BareaApp
       
     }
 
-    #createComputedDirective(trackcontext, element, directive, directivevalue)
+    #createComputedDirective(trackcontext, element, directivename, directivevalue)
     {
         let id = this.#internalSystemCounter++;
-        return {id: id, renderedobjid:trackcontext.renderedobjid,  renderedvarname: trackcontext.renderedvarname, template: trackcontext.template, directive:directive,  directivevalue:directivevalue, element: element, data:null, key:"", hashandler:false, handlername:"", inputtype:-1, iscomputed:true };
+        return {id: id, renderedobjid:trackcontext.renderedobjid,  renderedvarname: trackcontext.renderedvarname, template: trackcontext.template, directivename:directivename,  directivevalue:directivevalue, element: element, data:null, key:"", hashandler:false, handlername:"", inputtype:-1, iscomputed:true };
     }
 
-    #createInputDirective(trackcontext, element, directive, directivevalue, data, key, inputtype)
+    #createInputDirective(trackcontext, element, directivename, directivevalue, data, key, inputtype)
     {
         let id = this.#internalSystemCounter++;
-        return {id: id, renderedobjid:trackcontext.renderedobjid, renderedvarname: trackcontext.renderedvarname, template: trackcontext.template, directive:directive,  directivevalue:directivevalue, element: element, data:data, key:key, hashandler:false, handlername:"", inputtype:inputtype,iscomputed:false };
+        return {id: id, renderedobjid:trackcontext.renderedobjid, renderedvarname: trackcontext.renderedvarname, template: trackcontext.template, directivename:directivename,  directivevalue:directivevalue, element: element, data:data, key:key, hashandler:false, handlername:"", inputtype:inputtype,iscomputed:false };
     }
-    #createTemplateDirective(trackcontext, element, directive, directivevalue, data, key,  parentelement, templatemarkup, templatetagname)
+    #createTemplateDirective(trackcontext, element, directivename, directivevalue, data, key,  parentelement, templatemarkup, templatetagname)
     {
         let id = this.#internalSystemCounter++;
-        return {id: id, renderedobjid:trackcontext.renderedobjid, renderedvarname: trackcontext.renderedvarname, template: trackcontext.template, directive:directive,  directivevalue:directivevalue, element: element, data:data, key:key, hashandler:false, handlername:"", inputtype:-1, iscomputed:false, parentelement : parentelement, templatemarkup : templatemarkup, templatetagname : templatetagname, userenderedinterpolation:false };
+        return {id: id, renderedobjid:trackcontext.renderedobjid, renderedvarname: trackcontext.renderedvarname, template: trackcontext.template, directivename:directivename,  directivevalue:directivevalue, element: element, data:data, key:key, hashandler:false, handlername:"", inputtype:-1, iscomputed:false, parentelement : parentelement, templatemarkup : templatemarkup, templatetagname : templatetagname, userenderedinterpolation:false };
     }
-    #createInterpolationDirective(trackcontext, directive, directivevalue, data, key,interpolatednode, expression, nodetemplate)
+    #createInterpolationDirective(trackcontext, directivename, directivevalue, data, key,interpolatednode, expression, nodetemplate)
     {
         let id = this.#internalSystemCounter++;
-        return {id: id, renderedobjid:trackcontext.renderedobjid, renderedvarname: trackcontext.renderedvarname, template: trackcontext.template, directive:directive,  directivevalue:directivevalue, element: null, data:data, key:key, hashandler:false, handlername:"", inputtype:-1, iscomputed:false, isrendered:false, interpolatednode: interpolatednode, expression: expression, nodetemplate:nodetemplate, nodeexpressions:[], renderedindex: trackcontext.renderedindex  };
+        return {id: id, renderedobjid:trackcontext.renderedobjid, renderedvarname: trackcontext.renderedvarname, template: trackcontext.template, directivename:directivename,  directivevalue:directivevalue, element: null, data:data, key:key, hashandler:false, handlername:"", inputtype:-1, iscomputed:false, isrendered:false, interpolatednode: interpolatednode, expression: expression, nodetemplate:nodetemplate, nodeexpressions:[], renderedindex: trackcontext.renderedindex  };
     }
 
     #handleUITrackerNofify = (reasonobj, reasonkey, reasonvalue, path, resultset, reasonfuncname) =>
     {
-        resultset.forEach(ui => 
+        resultset.forEach(directive => 
         {
-            if (BareaHelper.DIR_GROUP_BIND_TO_PATH.includes(ui.directive)){
+            if (BareaHelper.DIR_GROUP_BIND_TO_PATH.includes(directive.directivename)){
 
-                    if (ui.hashandler){
-                        this.#runBindHandler(BareaHelper.VERB_SET_UI, ui);
+                    if (directive.hashandler){
+                        this.#runBindHandler(BareaHelper.VERB_SET_UI, directive);
                         return;
                     }
 
-                    if (BareaHelper.DIR_GROUP_UI_DUPLEX.includes(ui.directive))
+                    if (BareaHelper.DIR_GROUP_UI_DUPLEX.includes(directive.directivename))
                     {
-                        if (ui.inputType === BareaHelper.UI_INPUT_TEXT){
-                            this.#setInputText(ui);
+                        if (directive.inputType === BareaHelper.UI_INPUT_TEXT){
+                            this.#setInputText(directive);
                         }
-                        else if (ui.inputType === BareaHelper.UI_INPUT_CHECKBOX){
-                            this.#setInputCheckbox(ui);
+                        else if (directive.inputType === BareaHelper.UI_INPUT_CHECKBOX){
+                            this.#setInputCheckbox(directive);
                         }
-                        else if (ui.inputType === BareaHelper.UI_INPUT_RADIO){
-                            this.#setInputRadio(ui);
+                        else if (directive.inputType === BareaHelper.UI_INPUT_RADIO){
+                            this.#setInputRadio(directive);
                         }
                     }
-                    else if (ui.directive===BareaHelper.DIR_CLASS){
-                        this.#setClass(ui);
+                    else if (directive.directivename===BareaHelper.DIR_CLASS){
+                        this.#setClass(directive);
                     }
-                    else if (ui.directive===BareaHelper.DIR_HREF){
-                        this.#setHref(ui);
+                    else if (directive.directivename===BareaHelper.DIR_HREF){
+                        this.#setHref(directive);
                     }
-                    else if (ui.directive===BareaHelper.DIR_IMAGE_SRC){
-                        this.#setSrc(ui);
+                    else if (directive.directivename===BareaHelper.DIR_IMAGE_SRC){
+                        this.#setSrc(directive);
                     }
                     
                     
             }
-            else if (ui.directive===BareaHelper.DIR_INTERPOLATION){
+            else if (directive.directivename===BareaHelper.DIR_INTERPOLATION){
 
-                this.#setInterpolation(ui);
+                this.#setInterpolation(directive);
             }   
-            else if (BareaHelper.DIR_GROUP_MARKUP_GENERATION.includes(ui.directive)){
+            else if (BareaHelper.DIR_GROUP_MARKUP_GENERATION.includes(directive.directivename)){
 
                 if (!Array.isArray(reasonvalue)){
                     console.error('Did not receive an array to render a template, should not happen if there is a god');
@@ -1060,30 +1060,24 @@ class BareaApp
                 }
 
                 if (reasonfuncname && BareaHelper.ARRAY_FUNCTIONS.includes(reasonfuncname))
-                    this.#renderTemplates(ui,path,null,reasonfuncname, reasonvalue); 
+                    this.#renderTemplates(directive,path,null,reasonfuncname, reasonvalue); 
                 else
-                    this.#renderTemplates(ui,path,reasonvalue,"", null); 
+                    this.#renderTemplates(directive,path,reasonvalue,"", null); 
 
             }
-            else if (BareaHelper.DIR_GROUP_COMPUTED.includes(ui.directive))
+            else if (BareaHelper.DIR_GROUP_COMPUTED.includes(directive.directivename))
             {
-                // if (path)
-                // {
-                //     let principalpath = BareaHelper.getPrincipalBareaPath(path);
-                //     if (!this.#computedPropertiesDependencyTracker.isDepencencyPath(principalpath, ui.handlername) && path !== BareaHelper.ROOT_OBJECT)
-                //         return;
-                // }
-                this.#runComputedFunction(ui);
+                this.#runComputedFunction(directive);
             }
         });
     }
 
     
   
-    #runComputedFunction(ui)
+    #runComputedFunction(directive)
     {
 
-        let handlername = ui.handlername;
+        let handlername = directive.handlername;
         let boundvalue = false;
         if (this.#computedProperties[handlername]) {
                 boundvalue = this.#computedProperties[handlername].value;
@@ -1091,158 +1085,158 @@ class BareaApp
             console.warn(`Computed boolean function '${handlername}' not found.`);
         }
         
-        if (ui.directive===BareaHelper.DIR_HIDE)
-            ui.element.style.display = boundvalue ? "none" : ""
-        else if (ui.directive===BareaHelper.DIR_SHOW)      
-            ui.element.style.display = boundvalue ? "" : "none";
-        else if (ui.directive===BareaHelper.DIR_IF) 
+        if (directive.directivename===BareaHelper.DIR_HIDE)
+            directive.element.style.display = boundvalue ? "none" : ""
+        else if (directive.directivename===BareaHelper.DIR_SHOW)      
+            directive.element.style.display = boundvalue ? "" : "none";
+        else if (directive.directivename===BareaHelper.DIR_IF) 
         {
-          this.#setComputedIf(ui, boundvalue);
+          this.#setComputedIf(directive, boundvalue);
         }
-        else if (ui.directive===BareaHelper.DIR_CLASS_IF) 
+        else if (directive.directivename===BareaHelper.DIR_CLASS_IF) 
         {
-            let truevalue = ui.directivevalue;
+            let truevalue = directive.directivevalue;
             if (truevalue.includes('?'))
             truevalue=truevalue.split('?')[1];
 
-          this.#setComputedClassIf(ui, boundvalue, truevalue);
+          this.#setComputedClassIf(directive, boundvalue, truevalue);
 
         }    
               
     }
 
-    #runBindHandler(verb, ui)
+    #runBindHandler(verb, directive)
     {
 
-        if (!ui.handlerpieces)
-            ui.handlerpieces = BareaHelper.parseBareaFunctionCall(ui.handlername);
+        if (!directive.handlerpieces)
+            directive.handlerpieces = BareaHelper.parseBareaFunctionCall(directive.handlername);
 
         let allparams = [];
         if (verb === BareaHelper.VERB_SET_UI)
-            allparams = [verb, ui.element, ui.data[ui.key]];
+            allparams = [verb, directive.element, directive.data[directive.key]];
 
         if (verb === BareaHelper.VERB_SET_DATA)
-            allparams = [verb, ui.element, ui.data, ui.key];
+            allparams = [verb, directive.element, directive.data, directive.key];
 
-        allparams.push(...ui.handlerpieces.params);
+        allparams.push(...directive.handlerpieces.params);
 
-        if (this.#methods[ui.handlerpieces.functionName]) {
-            this.#methods[ui.handlerpieces.functionName].apply(this, allparams);
+        if (this.#methods[directive.handlerpieces.functionName]) {
+            this.#methods[directive.handlerpieces.functionName].apply(this, allparams);
         } else {
-            console.warn(`Handler function '${ui.handlerpieces.functionName}' not found.`);
+            console.warn(`Handler function '${directive.handlerpieces.functionName}' not found.`);
         }
     }
 
-    #setComputedClassIf(ui, boundvalue, truevalue) 
+    #setComputedClassIf(directive, boundvalue, truevalue) 
     {
         let classnames = truevalue.split(/[\s,]+/);
 
         // Add classes if condition is true and remove if false
         if (boundvalue) {
             classnames.forEach(className => {
-                if (!ui.element.classList.contains(className)) {
-                     ui.element.classList.add(className); // Add class if not already present
+                if (!directive.element.classList.contains(className)) {
+                     directive.element.classList.add(className); // Add class if not already present
                 }
                 });
         } 
         else 
         {
              classnames.forEach(className => {
-                 if (ui.element.classList.contains(className)) {
-                    ui.element.classList.remove(className); // Remove class if present
+                 if (directive.element.classList.contains(className)) {
+                    directive.element.classList.remove(className); // Remove class if present
                 }
             });
         }
     }
 
-    #setComputedIf(ui, boundvalue) 
+    #setComputedIf(directive, boundvalue) 
     {
         if (boundvalue)
         {
-            if (!ui.element.parentNode)
-                 if (ui.elementnextsibling)
-                    ui.parentelement.insertBefore(ui.element, ui.elementnextsibling);
+            if (!directive.element.parentNode)
+                 if (directive.elementnextsibling)
+                    directive.parentelement.insertBefore(directive.element, directive.elementnextsibling);
         }
         else
         {
-            if (ui.element.parentNode)
+            if (directive.element.parentNode)
             {
-                ui.elementnextsibling = ui.element.nextSibling;
-                ui.element.remove();
+                directive.elementnextsibling = directive.element.nextSibling;
+                directive.element.remove();
             }   
         }
     }
 
-    #setInputText(ui) {
-        if (ui.element && ui.element.value !== ui.data[ui.key]) 
+    #setInputText(directive) {
+        if (directive.element && directive.element.value !== directive.data[directive.key]) 
         {
-            if (!ui.data[ui.key])
-                ui.element.value = "";
+            if (!directive.data[directive.key])
+                directive.element.value = "";
             else
-                ui.element.value = ui.data[ui.key];
+                directive.element.value = directive.data[directive.key];
         }
     }
 
-    #setInputCheckbox(ui) 
+    #setInputCheckbox(directive) 
     {
-        if (ui.element && ui.element.checked !== ui.data[ui.key]) 
+        if (directive.element && directive.element.checked !== directive.data[directive.key]) 
         {
-            if (!ui.data[ui.key])
-                ui.element.checked = false;
+            if (!directive.data[directive.key])
+                directive.element.checked = false;
             else
-                ui.element.checked = ui.data[ui.key];
+                directive.element.checked = directive.data[directive.key];
         }
     }
 
-    #setInputRadio(ui)
+    #setInputRadio(directive)
     {
-        if (ui.element && ui.element.type === 'radio' && ui.data[ui.key] !== undefined && ui.element.checked !== (ui.element.value === ui.data[ui.key])) 
+        if (directive.element && directive.element.type === 'radio' && directive.data[directive.key] !== undefined && directive.element.checked !== (directive.element.value === directive.data[directive.key])) 
         {
-            ui.element.checked = ui.element.value === ui.data[ui.key];
+            directive.element.checked = directive.element.value === directive.data[directive.key];
         }
     }
 
-    #setClass(ui) 
+    #setClass(directive) 
     {
-        if (!ui.data[ui.key])
+        if (!directive.data[directive.key])
             return;
 
-        if (!ui.orgvalue)
-            ui.orgvalue="";
+        if (!directive.orgvalue)
+            directive.orgvalue="";
      
-        let classes = ui.data[ui.key];
+        let classes = directive.data[directive.key];
         if (classes.includes(','))
             classes = classes.replaceAll(',', ' ');
     
-        ui.element.className = classes || ui.orgvalue;
+        directive.element.className = classes || directive.orgvalue;
     }
 
-    #setSrc(ui) 
+    #setSrc(directive) 
     {
-        if (!ui.data[ui.key])
+        if (!directive.data[directive.key])
             return;
     
-        ui.element.src = ui.data[ui.key];
+        directive.element.src = directive.data[directive.key];
     }
 
-    #setHref(ui) 
+    #setHref(directive) 
     {
-        if (!ui.data[ui.key])
+        if (!directive.data[directive.key])
             return;
 
-        ui.element.href = ui.data[ui.key];
+        directive.element.href = directive.data[directive.key];
     }
-    #setInterpolation(ui)
+    #setInterpolation(directive)
     {
  
-        let interpolatednode = ui.interpolatednode;
-        let nodetemplate = ui.nodetemplate;
+        let interpolatednode = directive.interpolatednode;
+        let nodetemplate = directive.nodetemplate;
         //We loop individual expressions if many in a node
-        ui.nodeexpressions.forEach(ipstmt => 
+        directive.nodeexpressions.forEach(ipstmt => 
         {
 
             let interpol_value = "";
-            const attribute_value_type = this.#getExpressionType(ipstmt.directivevalue,BareaHelper.DIR_INTERPOLATION,ui.renderedvarname);
+            const attribute_value_type = this.#getExpressionType(ipstmt.directivevalue,BareaHelper.DIR_INTERPOLATION,directive.renderedvarname);
             if (attribute_value_type===BareaHelper.EXPR_TYPE_INVALID)
             {
                     console.error(`The ${BareaHelper.DIR_INTERPOLATION} directive has an invalid expression (${ipstmt.directivevalue}).`);
@@ -1262,7 +1256,7 @@ class BareaApp
             }
             else if (attribute_value_type === BareaHelper.INTERPOL_INDEX)
             {
-                interpol_value = String(ui.renderedindex);
+                interpol_value = String(directive.renderedindex);
             }
     
             if (!interpol_value)
@@ -1288,28 +1282,28 @@ class BareaApp
      * @param {string} key - The key in the parent affected object.
      * @param {any} target - The parent object of what's changed.
      */
-    #renderTemplates(ui, path='root', reasonarray, arrayfuncname, arrayfuncargs) 
+    #renderTemplates(template_directive, path='root', reasonarray, arrayfuncname, arrayfuncargs) 
     {
         let elementsremoved = false;
         let always_rerender = false;
         let foreacharray = [];
      
-            let [varname, datapath] = ui.directivevalue.split(" in ").map(s => s.trim());
+            let [varname, datapath] = template_directive.directivevalue.split(" in ").map(s => s.trim());
             if (!varname)
             {
-                console.error(`No variable name was found in the ${ui.directive} expression`);
+                console.error(`No variable name was found in the ${template_directive.directivename} expression`);
                 return;
             }
             if (!datapath)
             {
-                console.error(`No path or computed function was found in the ${ui.directive} expression`);
+                console.error(`No path or computed function was found in the ${template_directive.directivename} expression`);
                 return;
             }
 
             if (arrayfuncname === 'shift' || arrayfuncname === 'pop' || arrayfuncname === 'splice')
                 elementsremoved=true;    
 
-            if (this.#getExpressionType(datapath, ui.directive)===BareaHelper.EXPR_TYPE_COMPUTED)
+            if (this.#getExpressionType(datapath, template_directive.directivename)===BareaHelper.EXPR_TYPE_COMPUTED)
             {
                 //If computed function always rerender
                 always_rerender=true;
@@ -1317,7 +1311,7 @@ class BareaApp
                 if (this.#computedProperties[datapath])
                     foreacharray = this.#computedProperties[datapath].value;
                 else
-                    console.warn(`Could not find computed function name in the ${ui.directive} directive`);
+                    console.warn(`Could not find computed function name in the ${template_directive.directivename} directive`);
 
             }
             else
@@ -1345,19 +1339,19 @@ class BareaApp
                 let counter=0;
 
                 //Clean all dependencies on templateid
-                this.#uiDependencyTracker.removeTemplateDependencies(ui.id);
+                this.#uiDependencyTracker.removeTemplateDependencies(template_directive.id);
 
-                ui.parentelement.innerHTML = "";
+                template_directive.parentelement.innerHTML = "";
                 const fragment = document.createDocumentFragment();
                 foreacharray.forEach(row => {
                     this.#internalSystemCounter++;
-                    const newtag = document.createElement(ui.templatetagname);
-                    newtag.innerHTML = ui.templatemarkup;
+                    const newtag = document.createElement(template_directive.templatetagname);
+                    newtag.innerHTML = template_directive.templatemarkup;
 
                     if (newtag.id)
                         newtag.id = newtag.id + `-${this.#internalSystemCounter}` 
                     else
-                        newtag.id = `${ui.id}-${varname}-${this.#internalSystemCounter}`; 
+                        newtag.id = `${template_directive.id}-${varname}-${this.#internalSystemCounter}`; 
 
                     fragment.appendChild(newtag);
                 
@@ -1377,12 +1371,12 @@ class BareaApp
                     
                     });
 
-                    this.#trackDirectives(newtag, {template:ui, rendereddata:row, renderedindex:counter, renderedvarname:varname, renderedobjid: this.#internalSystemCounter});
+                    this.#trackDirectives(newtag, {template:template_directive, rendereddata:row, renderedindex:counter, renderedvarname:varname, renderedobjid: this.#internalSystemCounter});
                     counter++;
                 });
 
                 if (fragment.childElementCount>0)
-                    ui.parentelement.appendChild(fragment);  
+                    template_directive.parentelement.appendChild(fragment);  
             }
             else
             {
@@ -1390,30 +1384,30 @@ class BareaApp
                 
                 if (arrayfuncname === "push" && arrayfuncargs) {
                     arrayfuncargs.forEach(row => {
-                        let newItem = this.#getTemplateElement(ui, varname, row);
-                        ui.parentelement.appendChild(newItem);
+                        let newItem = this.#getTemplateElement(template_directive, varname, row);
+                        template_directive.parentelement.appendChild(newItem);
                     });
                 } 
                 else if (arrayfuncname === "unshift" && arrayfuncargs) {
                     arrayfuncargs.reverse().forEach(row => {
-                        let newItem = this.#getTemplateElement(ui, varname, row);
-                        ui.parentelement.insertBefore(newItem,  ui.parentelement.firstChild);
+                        let newItem = this.#getTemplateElement(template_directive, varname, row);
+                        template_directive.parentelement.insertBefore(newItem,  template_directive.parentelement.firstChild);
                     });
                 }
                 else if (arrayfuncname === "pop") {
-                    ui.parentelement.removeChild(ui.parentelement.lastChild);
+                    template_directive.parentelement.removeChild(template_directive.parentelement.lastChild);
                 }
                 else if (arrayfuncname === "shift") {
-                    ui.parentelement.removeChild(ui.parentelement.firstChild);
+                    template_directive.parentelement.removeChild(template_directive.parentelement.firstChild);
                 }
                
-                if (ui.userenderedinterpolation)
+                if (template_directive.userenderedinterpolation)
                 {
                     let counter=0;
                     foreacharray.forEach(row=>{
-                        let directives = this.#uiDependencyTracker.getObjectDependencies(row, ui.id);
+                        let directives = this.#uiDependencyTracker.getObjectDependencies(row, template_directive.id);
                         directives.forEach(dir =>{
-                            if (dir.directive === BareaHelper.DIR_INTERPOLATION && dir.isrendered)
+                            if (dir.directivename === BareaHelper.DIR_INTERPOLATION && dir.isrendered)
                             {
                                 dir.renderedindex=counter;
                                 this.#setInterpolation(dir);
@@ -1428,7 +1422,7 @@ class BareaApp
             }
 
             if (elementsremoved)
-                this.#uiDependencyTracker.removeDeletedElementDependencies(ui.id);
+                this.#uiDependencyTracker.removeDeletedElementDependencies(template_directive.id);
         
     }
 
@@ -1627,9 +1621,9 @@ class BareaApp
                 this.dependencyPaths.add(path);
             }
 
-            addDependenUserInterface(ui)
+            addDependentDirective(directive)
             {
-                this.userInterfaces.add(ui);
+                this.userInterfaces.add(directive);
             }
         
             get value() 
@@ -1848,7 +1842,7 @@ class BareaApp
                 for (let i = 0; i < keystodelete.length-1; i++)
                     this.#dependencies.delete(keystodelete[i]);
 
-                //Remove ui:s from computed functions too
+                //Remove directive:s from computed functions too
                 Object.keys(computedProperties).forEach(key => {
                     //Create an array before deleting in the set
                     for (let directive of [...computedProperties[key].userInterfaces]) {
@@ -1874,7 +1868,7 @@ class BareaApp
                 for (let i = 0; i < keystodelete.length-1; i++)
                     this.#dependencies.delete(keystodelete[i]);
 
-                //Remove ui:s from computed functions too
+                //Remove directive:s from computed functions too
                 Object.keys(computedProperties).forEach(key => {
                     //Create an array before deleting in the set
                     for (let directive of [...computedProperties[key].userInterfaces]) {
@@ -1939,22 +1933,22 @@ class BareaApp
                 return this.#dependencies;
             } 
 
-            track(scope, ui) 
+            track(scope, directive) 
             {
                 this.#trackingCalls++;
 
-                if (!ui.data && !ui.isrendered)
-                    console.error(`Tracked UI has no data`,ui);
+                if (!directive.data && !directive.isrendered)
+                    console.error(`Tracked UI has no data`,directive);
 
-                if (BareaHelper.DIR_GROUP_COMPUTED.includes(ui.directive))
+                if (BareaHelper.DIR_GROUP_COMPUTED.includes(directive.directivename))
                     return;
 
-                const object = ui.data;
+                const object = directive.data;
               
                 let depKey="";
                 if (scope==='value')
                 {
-                    depKey = this.#getObjectId(object).id + ":value:" + ui.key; 
+                    depKey = this.#getObjectId(object).id + ":value:" + directive.key; 
                 }
                 else if (scope==='object')
                 {
@@ -1970,7 +1964,7 @@ class BareaApp
                 {
                     this.#dependencies.set(depKey, new Set());
                 }
-                this.#dependencies.get(depKey).add(ui);
+                this.#dependencies.get(depKey).add(directive);
 
                 return true;
 
