@@ -319,17 +319,28 @@ class BareaApp
                                 this.bareaWrappedMethods.set(funckey, (...args) => 
                                 {
 
-                    
-                                    // let proxiedArgs = args.map(arg => 
-                                    //     (typeof arg === "object" && arg !== null) ? this.#createReactiveProxy(callback, arg) : arg
-                                    // );
-                    
-                                    //const result = Array.prototype[value.name].apply(target, proxiedArgs);
+                                    let proxyargs =[];
+                                    args.forEach(t=>
+                                    {
+                                        let proxyargobj = null;
+                                        if (typeof t === "object"){
+                                            proxyargobj = this.#createReactiveProxy(callback, t);
+                                            if (!this.#appDataProxyCache.has(t)) 
+                                                this.#appDataProxyCache.set(t, proxyargobj);
+                                        }else{
+                                            proxyargobj=t;
+                                        }
+                                        
+
+                                        proxyargs.push(proxyargobj);
+                                    });
+                                
+                
                                     const result = value.apply(target, args); 
 
                                     this.#computedPropertiesDependencyTracker.notify(currentpath, value.name);
 
-                                    callback(currentpath, receiver, '', args, value.name);
+                                    callback(currentpath, receiver, '', proxyargs, value.name);
 
                                     return result;
                                 });
@@ -838,7 +849,9 @@ class BareaApp
                         tracking_obj.isrendered = true;
                         tracking_obj.iscomputed = false;
                         tracking_obj.data = trackcontext.rendereddata;
-                        nodeexpressions.push(tracking_obj);   
+                        nodeexpressions.push(tracking_obj); 
+                        if (trackcontext.template)  
+                            trackcontext.template.userenderedinterpolation = true;
                     }
                             
                 });  
@@ -992,7 +1005,7 @@ class BareaApp
     #createTemplateDirective(trackcontext, element, directive, directivevalue, data, key,  parentelement, templatemarkup, templatetagname)
     {
         let id = this.#internalSystemCounter++;
-        return {id: id, renderedobjid:trackcontext.renderedobjid, renderedvarname: trackcontext.renderedvarname, template: trackcontext.template, directive:directive,  directivevalue:directivevalue, element: element, data:data, key:key, hashandler:false, handlername:"", inputtype:-1, iscomputed:false, parentelement : parentelement, templatemarkup : templatemarkup, templatetagname : templatetagname };
+        return {id: id, renderedobjid:trackcontext.renderedobjid, renderedvarname: trackcontext.renderedvarname, template: trackcontext.template, directive:directive,  directivevalue:directivevalue, element: element, data:data, key:key, hashandler:false, handlername:"", inputtype:-1, iscomputed:false, parentelement : parentelement, templatemarkup : templatemarkup, templatetagname : templatetagname, userenderedinterpolation:false };
     }
     #createInterpolationDirective(trackcontext, directive, directivevalue, data, key,interpolatednode, expression, nodetemplate)
     {
@@ -1277,10 +1290,10 @@ class BareaApp
      */
     #renderTemplates(ui, path='root', reasonarray, arrayfuncname, arrayfuncargs) 
     {
+        let elementsremoved = false;
         let always_rerender = false;
         let foreacharray = [];
      
-
             let [varname, datapath] = ui.directivevalue.split(" in ").map(s => s.trim());
             if (!varname)
             {
@@ -1292,6 +1305,9 @@ class BareaApp
                 console.error(`No path or computed function was found in the ${ui.directive} expression`);
                 return;
             }
+
+            if (arrayfuncname === 'shift' || arrayfuncname === 'pop' || arrayfuncname === 'splice')
+                elementsremoved=true;    
 
             if (this.#getExpressionType(datapath, ui.directive)===BareaHelper.EXPR_TYPE_COMPUTED)
             {
@@ -1371,8 +1387,7 @@ class BareaApp
             else
             {
             
-               
-
+                
                 if (arrayfuncname === "push" && arrayfuncargs) {
                     arrayfuncargs.forEach(row => {
                         let newItem = this.#getTemplateElement(ui, varname, row);
@@ -1386,48 +1401,34 @@ class BareaApp
                     });
                 }
                 else if (arrayfuncname === "pop") {
-                    this.#uiDependencyTracker.removeDependency(arrayfuncargs[0]);
-                    ui.parentelement.removeChild( ui.parentelement.lastChild);
+                    ui.parentelement.removeChild(ui.parentelement.lastChild);
                 }
                 else if (arrayfuncname === "shift") {
-                    this.#uiDependencyTracker.removeDependency(arrayfuncargs[0]);
-                    ui.parentelement.removeChild( ui.parentelement.firstChild);
+                    ui.parentelement.removeChild(ui.parentelement.firstChild);
                 }
-                else if (arrayfuncname === "splice" && arrayfuncargs) {
-                    // let [start, deleteCount, ...newItems] = arrayfuncargs;
-                    // let children = Array.from(ui.parentelement.children);
-            
-                    // // Remove only the specified number of items
-                    // for (let i = 0; i < deleteCount; i++) {
-                    //     this.#uiDependencyTracker.removeDependency(arrayfuncargs[i]);
-                    //     if (children[start]) ui.parentelement.removeChild(children[start]);
-                        
-                    // }
-            
-                    // // Insert new items at the right position
-                    // newItems.reverse().forEach(item => {
-                    //     let newItem = this.#getTemplateElement(ui, varname, item);
-                    //     ui.parentelement.insertBefore(newItem,  ui.parentelement.children[start] || null);
-                    // });
-                }
-
-                let counter=0;
-                //foreacharray = this.getPathData(datapath);
-                foreacharray.forEach(row=>{
-                    let directives = this.#uiDependencyTracker.getObjectDependencies(row, ui.id);
-                    directives.forEach(dir =>{
-                        if (dir.directive === BareaHelper.DIR_INTERPOLATION && dir.isrendered)
-                        {
-                            dir.renderedindex=counter;
-                            this.#setInterpolation(dir);
-                            counter++; 
-                        }
+               
+                if (ui.userenderedinterpolation)
+                {
+                    let counter=0;
+                    foreacharray.forEach(row=>{
+                        let directives = this.#uiDependencyTracker.getObjectDependencies(row, ui.id);
+                        directives.forEach(dir =>{
+                            if (dir.directive === BareaHelper.DIR_INTERPOLATION && dir.isrendered)
+                            {
+                                dir.renderedindex=counter;
+                                this.#setInterpolation(dir);
+                                counter++; 
+                            }
+                        });
+                    
                     });
-                   
-                });
+                }
  
               
             }
+
+            if (elementsremoved)
+                this.#uiDependencyTracker.removeDeletedElementDependencies(ui.id);
         
     }
 
@@ -1858,6 +1859,32 @@ class BareaApp
 
             }
 
+            removeDeletedElementDependencies(templateid=-1){
+
+                let keystodelete = [];
+                this.#dependencies.forEach((value, key) => 
+                {
+                    for (const directive of value) 
+                    {
+                        if (directive.template && directive.template.id===templateid && templateid!==-1 && directive.element && !directive.element.isConnected)
+                            keystodelete.push(key);
+                    }       
+                });
+
+                for (let i = 0; i < keystodelete.length-1; i++)
+                    this.#dependencies.delete(keystodelete[i]);
+
+                //Remove ui:s from computed functions too
+                Object.keys(computedProperties).forEach(key => {
+                    //Create an array before deleting in the set
+                    for (let directive of [...computedProperties[key].userInterfaces]) {
+                        if (directive.template && directive.template.id===templateid && directive.element && !directive.element.isConnected)
+                            computedProperties[key].userInterfaces.delete(directive);
+                    }
+                });
+
+            }
+
             removeDependency(object)
             {
                 let keystodelete = [];
@@ -2063,7 +2090,7 @@ class BareaHelper
     static ROOT_OBJECT = 'root';
 
     //Array functions to handle in the proxy
-    static ARRAY_FUNCTIONS = ['push', 'pop', 'splice', 'shift', 'unshift']; //'sort', 'reverse' 
+    static ARRAY_FUNCTIONS = ['push', 'pop', 'splice', 'shift', 'unshift','reverse','sort']; 
 
     //Path (String) functions
     static getPrincipalBareaPath = function(path) 

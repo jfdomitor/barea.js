@@ -229,9 +229,16 @@
                     <br />
                     <button class="beautiful-btn" ba-click="editHandler('Editing...')" ba-path="root.model">Edit Notes</button>
                     <button class="beautiful-btn" ba-click="showMoreRamones('Hey ho lets go')">Show 50 more shows</button>
-                    <button class="beautiful-btn" ba-click="addShowLine()">Add Line</button>
                     <button class="beautiful-btn" ba-click="deleteMarkedLines()">Delete marked lines</button>
                     <br />
+                    <br />
+                    <button class="beautiful-btn" ba-click="arrayOperation('unshift')">Unshift</button>
+                    <button class="beautiful-btn" ba-click="arrayOperation('push')">Push</button>
+                    <button class="beautiful-btn" ba-click="arrayOperation('pop')">Pop</button>
+                    <button class="beautiful-btn" ba-click="arrayOperation('shift')">Shift</button>
+                    <button class="beautiful-btn" ba-click="arrayOperation('splice')">Splice</button>
+                    <button class="beautiful-btn" ba-click="arrayOperation('reverse')">Reverse</button>
+                    <button class="beautiful-btn" ba-click="arrayOperation('sort')">Sort</button>
                     <br />
                     <table>
                         <thead>
@@ -355,12 +362,24 @@
                     this.getData().model.shows = getRamonesShows().slice((this.getData().addMoreCount-50),this.getData().addMoreCount);
                     //element.disabled=true;
                 },
-                addShowLine: function() 
+                arrayOperation: function(event,element,data,funcname) 
                 {
-                    this.getData().oneNewObject={somevalue:'hello'};
                     let current_array = this.getData().model.shows;
-                    current_array.unshift({Date:'', Note:''});
-                    //current_array.push({Date:'', Note:''});
+                    if (funcname==='unshift')
+                        current_array.unshift({Date:'1973-04-17', Note:'Test'});
+                    if (funcname==='pop')
+                        current_array.pop();
+                    if (funcname==='push')
+                        current_array.push({Date:'1973-04-17', Note:'Test'});
+                    if (funcname==='shift')
+                        current_array.shift();
+                    if (funcname==='reverse')
+                        current_array.reverse();
+                    if (funcname==='splice')
+                        current_array.splice(3,3);
+                    if (funcname==='sort')
+                        current_array.sort((a,b)=>a.Rating-b.Rating);
+        
                 },
                 deleteMarkedLines: function() 
                 {
