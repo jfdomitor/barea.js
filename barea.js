@@ -151,7 +151,7 @@ class BareaApp
   
         //Important: Always directly after proxification
         //Track UI
-        this.#detectElements();
+        this.#trackDirectives();
       
 
         if (this.#enableBareaId && ! this.#appDataProxy.hasOwnProperty('baId')) 
@@ -396,11 +396,9 @@ class BareaApp
 
     }
 
-    /***UI TRACKING ***/
-    #detectElements(tag=this.#appElement, templateid=-1, templatedata, templatekey)
+    #trackDirectives(tag=this.#appElement, trackcontext={templateid:-1, templatedata:null, index:-1, templatevarname:""})
     {
-        //Delete dynamic functions that was created along with the templates
-        //this.#computedPropertiesDependencyTracker.deleteDynamicTemplateFunctions();
+      
 
         //Validate templates before proceeding
         let templateChildren = this.#validateTemplateChildren();
@@ -455,18 +453,18 @@ class BareaApp
                             }
                         }
 
-                        let tracking_obj = this.#createInputDirective(templateid,el,attr.name,attr.value,null,"",systeminput);
+                        let tracking_obj = this.#createInputDirective(trackcontext.templateid,el,attr.name,attr.value,null,"",systeminput);
                         tracking_obj.expressiontype = attribute_value_type;
 
                 
                         //If root is included in the attr.value, example root.model.users.name
                         //Then we will bind to the root even if this is a template node
-                        if (!templatedata || attr.value.startsWith(BareaHelper.ROOT_OBJECT)){
+                        if (!trackcontext.templatedata || attr.value.startsWith(BareaHelper.ROOT_OBJECT)){
                             let objpath = BareaHelper.getLastBareaObjectName(attr.value);
                             tracking_obj.data=this.getProxifiedPathData(objpath);
                             tracking_obj.key=BareaHelper.getLastBareaKeyName(attr.value);
                         }else{
-                            tracking_obj.data=templatedata;
+                            tracking_obj.data=trackcontext.templatedata;
                             tracking_obj.key=BareaHelper.getLastBareaKeyName(attr.value);
                         }
 
@@ -570,14 +568,14 @@ class BareaApp
                             return;
                         }
     
-                        const tracking_obj = this.#createComputedDirective(templateid,el,attr.name,attr.value);
+                        const tracking_obj = this.#createComputedDirective(trackcontext.templateid,el,attr.name,attr.value);
                         tracking_obj.expressiontype = attribute_value_type;
 
                         //If root expression force root data to be executed
-                        if (!templatedata){
+                        if (!trackcontext.templatedata){
                             tracking_obj.data=this.#appDataProxy;
                         }else{
-                            tracking_obj.data=templatedata;
+                            tracking_obj.data=trackcontext.templatedata;
                         }
                         tracking_obj.key="";
 
@@ -588,7 +586,7 @@ class BareaApp
                         
                         let isnewhandler = false;
                         let handlername = this.#dynamicExpressionRegistry.get(attr.value);
-                        if (!handlername || templatedata) //Must use different handlers, since notification doesn't work otherwise.
+                        if (!handlername || trackcontext.templatedata) //Must use different handlers, since notification doesn't work otherwise.
                         {
                             isnewhandler=true;
                             if (genMarkup){
@@ -734,8 +732,8 @@ class BareaApp
                                 let bapath = el.getAttribute(BareaHelper.META_PATH);
                                 if (!bapath)
                                 {
-                                    if (templatedata)
-                                         eventdata = templatedata;
+                                    if (trackcontext.templatedata)
+                                         eventdata = trackcontext.templatedata;
                                 }
                                 else
                                 {
@@ -780,7 +778,7 @@ class BareaApp
                             .replace(/>\s+</g, '><')  // Remove spaces between tags
                             .replace(/(\S)\s{2,}(\S)/g, '$1 $2'); // Reduce multiple spaces to one inside text nodes
         
-                        const tracking_obj = this.#createTemplateDirective(templateid,el,attr.name,attr.value,null,"", el.parentElement,templateHtml, el.localName);
+                        const tracking_obj = this.#createTemplateDirective(trackcontext.templateid,el,attr.name,attr.value,null,"", el.parentElement,templateHtml, el.localName);
                         tracking_obj.expressiontype = attribute_value_type;
                         if (attribute_value_type!==BareaHelper.EXPR_TYPE_COMPUTED)
                         {
@@ -829,7 +827,7 @@ class BareaApp
                                 return;
                             }
 
-                            let tracking_obj = instance.#createInterpolationDirective(templateid,BareaHelper.DIR_INTERPOLATION,path,null,"",node, expr, node.nodeValue);
+                            let tracking_obj = instance.#createInterpolationDirective(trackcontext.templateid,BareaHelper.DIR_INTERPOLATION,path,null,"",node, expr, node.nodeValue);
                             tracking_obj.expressiontype = attribute_value_type;
                             if (attribute_value_type===BareaHelper.EXPR_TYPE_COMPUTED){
                                 tracking_obj.iscomputed = true;
@@ -839,11 +837,11 @@ class BareaApp
                             {
                                 //Find data
                                 let objpath=BareaHelper.ROOT_OBJECT;
-                                if (!templatedata || path.startsWith(BareaHelper.ROOT_OBJECT)){
+                                if (!trackcontext.templatedata || path.startsWith(BareaHelper.ROOT_OBJECT)){
                                     objpath = BareaHelper.getLastBareaObjectName(path);
                                     tracking_obj.data=instance.getProxifiedPathData(objpath);
                                 }else{
-                                    tracking_obj.data = templatedata;
+                                    tracking_obj.data = trackcontext.templatedata;
                                 }
 
                                 //Find key
@@ -1371,7 +1369,7 @@ class BareaApp
                     
                     });
 
-                    this.#detectElements(newtag, ui.id, row, "");
+                    this.#trackDirectives(newtag, {templateid:ui.id, templatedata:row, index:counter, templatevarname:varname});
                     counter++;
                 });
 
@@ -1498,7 +1496,7 @@ class BareaApp
         
         });
 
-        this.#detectElements(newtag, template.id, row, "");
+        this.#trackDirectives(newtag, {templateid:template.id, templatedata:row, index:-1, templatevarname:varname});
         return newtag;
     }
 
