@@ -261,7 +261,7 @@
                             -->
                             <tr ba-foreach="show in root.model.shows">
                                 <td ba-class-if="show.marked?bluebg">
-                                    <span ba-show="!root.edit">{{index}}</span>
+                                    <span ba-show="!root.edit">{{show.index}}</span>
                                     <span ba-show="lineShowEdit"><input type="checkbox" ba-bind="show.marked" /></span>
                                 </td>
                                 <td>{{show.Date}}</td>

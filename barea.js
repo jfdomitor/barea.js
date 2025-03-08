@@ -396,7 +396,7 @@ class BareaApp
 
     }
 
-    #trackDirectives(tag=this.#appElement, trackcontext={templateid:-1, templatedata:null, index:-1, templatevarname:""})
+    #trackDirectives(tag=this.#appElement, trackcontext={template:null, rendereddata:null, renderedindex:-1, renderedvarname:""})
     {
       
 
@@ -453,18 +453,18 @@ class BareaApp
                             }
                         }
 
-                        let tracking_obj = this.#createInputDirective(trackcontext.templateid,el,attr.name,attr.value,null,"",systeminput);
+                        let tracking_obj = this.#createInputDirective(trackcontext,el,attr.name,attr.value,null,"",systeminput);
                         tracking_obj.expressiontype = attribute_value_type;
 
                 
                         //If root is included in the attr.value, example root.model.users.name
                         //Then we will bind to the root even if this is a template node
-                        if (!trackcontext.templatedata || attr.value.startsWith(BareaHelper.ROOT_OBJECT)){
+                        if (!trackcontext.rendereddata || attr.value.startsWith(BareaHelper.ROOT_OBJECT)){
                             let objpath = BareaHelper.getLastBareaObjectName(attr.value);
                             tracking_obj.data=this.getProxifiedPathData(objpath);
                             tracking_obj.key=BareaHelper.getLastBareaKeyName(attr.value);
                         }else{
-                            tracking_obj.data=trackcontext.templatedata;
+                            tracking_obj.data=trackcontext.rendereddata;
                             tracking_obj.key=BareaHelper.getLastBareaKeyName(attr.value);
                         }
 
@@ -559,23 +559,21 @@ class BareaApp
                     else if (BareaHelper.DIR_GROUP_COMPUTED.includes(attr.name))
                     {
 
-                        const genMarkup = el.getAttribute(BareaHelper.META_IS_GENERATED_MARKUP);
-                        const varname = el.getAttribute(BareaHelper.META_ARRAY_VARNAME);
-                        const attribute_value_type = this.#getExpressionType(attr.value, attr.name, varname);
+                        const attribute_value_type = this.#getExpressionType(attr.value, attr.name, trackcontext.renderedvarname);
                         if (attribute_value_type===BareaHelper.EXPR_TYPE_INVALID)
                          {
                             console.error(`Then ${attr.name} directive has an invalid value (${attr.value}).`);
                             return;
                         }
     
-                        const tracking_obj = this.#createComputedDirective(trackcontext.templateid,el,attr.name,attr.value);
+                        const tracking_obj = this.#createComputedDirective(trackcontext,el,attr.name,attr.value);
                         tracking_obj.expressiontype = attribute_value_type;
 
                         //If root expression force root data to be executed
-                        if (!trackcontext.templatedata){
+                        if (!trackcontext.rendereddata){
                             tracking_obj.data=this.#appDataProxy;
                         }else{
-                            tracking_obj.data=trackcontext.templatedata;
+                            tracking_obj.data=trackcontext.rendereddata;
                         }
                         tracking_obj.key="";
 
@@ -586,10 +584,10 @@ class BareaApp
                         
                         let isnewhandler = false;
                         let handlername = this.#dynamicExpressionRegistry.get(attr.value);
-                        if (!handlername || trackcontext.templatedata) //Must use different handlers, since notification doesn't work otherwise.
+                        if (!handlername || trackcontext.rendereddata) //Must use different handlers, since notification doesn't work otherwise.
                         {
                             isnewhandler=true;
-                            if (genMarkup){
+                            if ((trackcontext.template)){ //Is template directive
                                 handlername = `${BareaHelper.META_DYN_TEMPLATE_FUNC_PREFIX}${this.#internalSystemCounter}`;
                             }else{
                                 handlername = `${BareaHelper.META_DYN_FUNC_PREFIX}${this.#internalSystemCounter}`;
@@ -652,11 +650,11 @@ class BareaApp
                                     }
                                 }
                                 
-                                condition=condition.replaceAll(varname+'.','contextdata.');
+                                condition=condition.replaceAll(trackcontext.renderedvarname+'.','contextdata.');
                                 return evalObjExpr(condition, tracking_obj.data);
                             }
 
-                            if (!varname)
+                            if (!trackcontext.renderedvarname)
                             {
                                 console.error(`Invalid expression: ${condition} to use as a dynamicly created function in a template.`);
                                 return;
@@ -691,11 +689,11 @@ class BareaApp
                                 }
                                 
                                 condition=condition.replaceAll('root.','rootdata.');
-                                condition=condition.replaceAll(varname+'.','subdata.');
+                                condition=condition.replaceAll(trackcontext.renderedvarname+'.','subdata.');
                                 return evalMixedExpr(condition, subobj,rootobj);
                             }
 
-                            if (!varname)
+                            if (!trackcontext.renderedvarname)
                             {
                                 console.error(`Invalid expression: ${condition} to use as a dynamicly created function in a template.`);
                                 return;
@@ -732,8 +730,8 @@ class BareaApp
                                 let bapath = el.getAttribute(BareaHelper.META_PATH);
                                 if (!bapath)
                                 {
-                                    if (trackcontext.templatedata)
-                                         eventdata = trackcontext.templatedata;
+                                    if (trackcontext.rendereddata)
+                                         eventdata = trackcontext.rendereddata;
                                 }
                                 else
                                 {
@@ -778,7 +776,7 @@ class BareaApp
                             .replace(/>\s+</g, '><')  // Remove spaces between tags
                             .replace(/(\S)\s{2,}(\S)/g, '$1 $2'); // Reduce multiple spaces to one inside text nodes
         
-                        const tracking_obj = this.#createTemplateDirective(trackcontext.templateid,el,attr.name,attr.value,null,"", el.parentElement,templateHtml, el.localName);
+                        const tracking_obj = this.#createTemplateDirective(trackcontext,el,attr.name,attr.value,null,"", el.parentElement,templateHtml, el.localName);
                         tracking_obj.expressiontype = attribute_value_type;
                         if (attribute_value_type!==BareaHelper.EXPR_TYPE_COMPUTED)
                         {
@@ -810,85 +808,89 @@ class BareaApp
         //Interpolation is detected in text nodes {{interplation}}
         if (this.#enableInterpolation)
         {
-            function traverseNodes(node, instance) {
-                if (node.nodeType === Node.TEXT_NODE) 
-                {
-                    if (node.nodeValue.includes("{{") && node.nodeValue.includes("}}"))
-                    {
-                        let nodeexpressions=[];
-                        let expressions = instance.#extractInterpolations(node.nodeValue);
-                        expressions.forEach(expr=>{
-
-                            let path = expr.replaceAll('{','').replaceAll('}','').trim();
-                            const attribute_value_type = instance.#getExpressionType(path,BareaHelper.DIR_INTERPOLATION);
-                            if (attribute_value_type===BareaHelper.EXPR_TYPE_INVALID)
-                            {
-                                console.error(`The ${DIR_INTERPOLATION} directive has an invalid expression (${path}).`);
-                                return;
-                            }
-
-                            let tracking_obj = instance.#createInterpolationDirective(trackcontext.templateid,BareaHelper.DIR_INTERPOLATION,path,null,"",node, expr, node.nodeValue);
-                            tracking_obj.expressiontype = attribute_value_type;
-                            if (attribute_value_type===BareaHelper.EXPR_TYPE_COMPUTED){
-                                tracking_obj.iscomputed = true;
-                                nodeexpressions.push(tracking_obj);
-                            }
-                            else if ([BareaHelper.EXPR_TYPE_ROOT_PATH,BareaHelper.EXPR_TYPE_OBJREF,BareaHelper.EXPR_TYPE_OBJREF_PATH,BareaHelper.INTERPOL_INDEX].includes(attribute_value_type))
-                            {
-                                //Find data
-                                let objpath=BareaHelper.ROOT_OBJECT;
-                                if (!trackcontext.templatedata || path.startsWith(BareaHelper.ROOT_OBJECT)){
-                                    objpath = BareaHelper.getLastBareaObjectName(path);
-                                    tracking_obj.data=instance.getProxifiedPathData(objpath);
-                                }else{
-                                    tracking_obj.data = trackcontext.templatedata;
-                                }
-
-                                //Find key
-                                tracking_obj.key="";
-                                let interpolation_key = BareaHelper.getLastBareaKeyName(path);
-                                if (interpolation_key!==BareaHelper.OBJECT && interpolation_key!==objpath){
-                                    tracking_obj.key=interpolation_key;
-                                }
-
-                                tracking_obj.iscomputed = false;
-                                nodeexpressions.push(tracking_obj);
-                          
-                            }
-                            
-                        });  
-                        
-                        if (nodeexpressions.length>0)
-                        {
-                            //Important must render per node so multiple expressions in one node leads to double tracking
-                            nodeexpressions.forEach(ne=>{
-                                ne.nodeexpressions = nodeexpressions;
-                                if (ne.iscomputed){
-                                    instance.#computedProperties[ne.directivevalue].addDependenUserInterface(ne);
-                                }else if (ne.key){
-                                    instance.#uiDependencyTracker.track('value', ne);
-                                }else if  (ne.data) {
-                                    instance.#uiDependencyTracker.track('object', ne);
-                                }
-
-                                instance.#setInterpolation(ne);
-
-                            }); 
-                         
-                        }
-                       
-                    }
-                }
-                
-                for (let child of node.childNodes) {
-                    traverseNodes(child, instance);
-                }
-            }
+            let nodes_with_expressions = this.#getInterplationNodesAndExpressions(tag);
             
-            traverseNodes(tag, this);
+            nodes_with_expressions.forEach(inode=>
+            {
+
+                let node = inode.textNode;
+                let nodeexpressions = [];
+                inode.expressions.forEach(expr=>
+                {
+
+                    let path = expr.replaceAll('{','').replaceAll('}','').trim();
+                    const attribute_value_type = this.#getExpressionType(path,BareaHelper.DIR_INTERPOLATION, trackcontext.renderedvarname);
+                    if (attribute_value_type===BareaHelper.EXPR_TYPE_INVALID)
+                    {
+                        console.error(`The ${DIR_INTERPOLATION} directive has an invalid expression (${path}).`);
+                        return;
+                    }
+
+                    let tracking_obj = this.#createInterpolationDirective(trackcontext,BareaHelper.DIR_INTERPOLATION,path,null,"",node, expr, node.nodeValue);
+                    tracking_obj.expressiontype = attribute_value_type;
+                    if (attribute_value_type===BareaHelper.EXPR_TYPE_COMPUTED){
+                        tracking_obj.isrendered = false;
+                        tracking_obj.iscomputed = true;
+                        nodeexpressions.push(tracking_obj);
+                    }
+                    else if ([BareaHelper.EXPR_TYPE_ROOT_PATH,BareaHelper.EXPR_TYPE_OBJREF,BareaHelper.EXPR_TYPE_OBJREF_PATH].includes(attribute_value_type))
+                    {
+                        //Find data
+                        let objpath=BareaHelper.ROOT_OBJECT;
+                        if (!trackcontext.rendereddata || path.startsWith(BareaHelper.ROOT_OBJECT)){
+                            objpath = BareaHelper.getLastBareaObjectName(path);
+                            tracking_obj.data=this.getProxifiedPathData(objpath);
+                        }else{
+                            tracking_obj.data = trackcontext.rendereddata;
+                        }
+
+                        //Find key
+                        tracking_obj.key="";
+                        let interpolation_key = BareaHelper.getLastBareaKeyName(path);
+                        if (interpolation_key!==BareaHelper.OBJECT && interpolation_key!==objpath){
+                            tracking_obj.key=interpolation_key;
+                        }
+
+                        tracking_obj.isrendered = false;
+                        tracking_obj.iscomputed = false;
+                        nodeexpressions.push(tracking_obj);
+                          
+                    }
+                    else if (BareaHelper.INTERPOL_INDEX===attribute_value_type)
+                    {
+                        //Wont be tracked
+                        tracking_obj.isrendered = true;
+                        tracking_obj.iscomputed = false;
+                        nodeexpressions.push(tracking_obj);   
+                    }
+                            
+                });  
+                        
+                if (nodeexpressions.length>0)
+                {
+                    //Important must render per node so multiple expressions in one node leads to double tracking
+                    nodeexpressions.forEach(ne=>
+                    {
+                        ne.nodeexpressions = nodeexpressions;
+                        if (ne.iscomputed && this.#computedProperties[ne.directivevalue]){
+                            this.#computedProperties[ne.directivevalue].addDependenUserInterface(ne);
+                        }else if (ne.key){
+                            this.#uiDependencyTracker.track('value', ne);
+                        }else if  (ne.data) {
+                            this.#uiDependencyTracker.track('object', ne);
+                        }
+
+                        this.#setInterpolation(ne);
+
+                    }); 
+                         
+                }
+                       
+            });
 
         }
-
+                
+           
         let log = this.#getConsoleLog(4);
         if (log.active){length
             console.log(log.name);
@@ -907,6 +909,25 @@ class BareaApp
 
         
     }
+
+    #getInterplationNodesAndExpressions(root = this.#appElement) 
+    {
+        let walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+            acceptNode(node) {
+                return (node.nodeValue.includes('{{') && node.nodeValue.includes('}}')) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
+            }
+        });
+    
+        let results = [];
+        //parentElement: walker.currentNode.parentNode
+        while (walker.nextNode()) {
+           let inode = { textNode: walker.currentNode, expressions:[] };
+           inode.expressions=this.#extractInterpolations(inode.textNode.nodeValue);
+           results.push(inode);
+        }
+        return results;
+    }
+    
 
      /**
      * Validates templates and removes them if invalid
@@ -943,13 +964,11 @@ class BareaApp
             if (!varname){
                 isValidTemplate=false;
                 console.error(`No variable name was found in the ${BareaHelper.DIR_FOREACH} expression: ${templateattr}`);
-                //templateroot._isInvalidTemplate = true;
                 isValidTemplate = false;
             }
             if (!datapath){
                 isValidTemplate=false;
                 console.error(`No path or computed function was found in the ${BareaHelper.DIR_FOREACH} expression: ${templateattr}`);
-                //templateroot._isInvalidTemplate = true;
                 isValidTemplate = false;
             }
 
@@ -981,26 +1000,26 @@ class BareaApp
       
     }
 
-    #createComputedDirective(templateid, element, directive, directivevalue)
+    #createComputedDirective(trackcontext, element, directive, directivevalue)
     {
         let id = this.#internalSystemCounter++;
-        return {id: id, isnew:true, templateid: templateid, directive:directive,  directivevalue:directivevalue, element: element, data:null, key:"", hashandler:false, handlername:"", inputtype:-1, iscomputed:true };
+        return {id: id, renderedvarname: trackcontext.renderedvarname, template: trackcontext.template, directive:directive,  directivevalue:directivevalue, element: element, data:null, key:"", hashandler:false, handlername:"", inputtype:-1, iscomputed:true };
     }
 
-    #createInputDirective(templateid, element, directive, directivevalue, data, key, inputtype)
+    #createInputDirective(trackcontext, element, directive, directivevalue, data, key, inputtype)
     {
         let id = this.#internalSystemCounter++;
-        return {id: id, isnew:true, templateid: templateid, directive:directive,  directivevalue:directivevalue, element: element, data:data, key:key, hashandler:false, handlername:"", inputtype:inputtype,iscomputed:false };
+        return {id: id, renderedvarname: trackcontext.renderedvarname, template: trackcontext.template, directive:directive,  directivevalue:directivevalue, element: element, data:data, key:key, hashandler:false, handlername:"", inputtype:inputtype,iscomputed:false };
     }
-    #createTemplateDirective(templateid, element, directive, directivevalue, data, key,  parentelement, templatemarkup, templatetagname)
+    #createTemplateDirective(trackcontext, element, directive, directivevalue, data, key,  parentelement, templatemarkup, templatetagname)
     {
         let id = this.#internalSystemCounter++;
-        return {id: id, isnew:true, templateid: templateid, directive:directive,  directivevalue:directivevalue, element: element, data:data, key:key, hashandler:false, handlername:"", inputtype:-1, iscomputed:false, parentelement : parentelement, templatemarkup : templatemarkup, templatetagname : templatetagname };
+        return {id: id, renderedvarname: trackcontext.renderedvarname, template: trackcontext.template, directive:directive,  directivevalue:directivevalue, element: element, data:data, key:key, hashandler:false, handlername:"", inputtype:-1, iscomputed:false, parentelement : parentelement, templatemarkup : templatemarkup, templatetagname : templatetagname };
     }
-    #createInterpolationDirective(templateid, directive, directivevalue, data, key,interpolatednode, expression, nodetemplate)
+    #createInterpolationDirective(trackcontext, directive, directivevalue, data, key,interpolatednode, expression, nodetemplate)
     {
         let id = this.#internalSystemCounter++;
-        return {id: id, isnew:true, templateid: templateid, directive:directive,  directivevalue:directivevalue, element: null, data:data, key:key, hashandler:false, handlername:"", inputtype:-1, iscomputed:false, interpolatednode: interpolatednode, expression: expression, nodetemplate:nodetemplate, nodeexpressions:[]  };
+        return {id: id, renderedvarname: trackcontext.renderedvarname, template: trackcontext.template, directive:directive,  directivevalue:directivevalue, element: null, data:data, key:key, hashandler:false, handlername:"", inputtype:-1, iscomputed:false, isrendered:false, interpolatednode: interpolatednode, expression: expression, nodetemplate:nodetemplate, nodeexpressions:[], renderedindex: trackcontext.renderedindex  };
     }
 
     #handleUITrackerNofify = (reasonobj, reasonkey, reasonvalue, path, resultset, reasonfuncname) =>
@@ -1232,7 +1251,7 @@ class BareaApp
         {
 
             let interpol_value = "";
-            const attribute_value_type = this.#getExpressionType(ipstmt.directivevalue,BareaHelper.DIR_INTERPOLATION);
+            const attribute_value_type = this.#getExpressionType(ipstmt.directivevalue,BareaHelper.DIR_INTERPOLATION,ui.renderedvarname);
             if (attribute_value_type===BareaHelper.EXPR_TYPE_INVALID)
             {
                     console.error(`The ${BareaHelper.DIR_INTERPOLATION} directive has an invalid expression (${ipstmt.directivevalue}).`);
@@ -1241,7 +1260,7 @@ class BareaApp
     
             if (attribute_value_type===BareaHelper.EXPR_TYPE_COMPUTED){
                 interpol_value=this.#computedProperties[ipstmt.directivevalue].value;
-            }else if (attribute_value_type===BareaHelper.EXPR_TYPE_ROOT_PATH || attribute_value_type===BareaHelper.EXPR_TYPE_OBJREF || attribute_value_type===BareaHelper.EXPR_TYPE_OBJREF_PATH)
+            }else if ([BareaHelper.EXPR_TYPE_ROOT_PATH,BareaHelper.EXPR_TYPE_OBJREF,BareaHelper.EXPR_TYPE_OBJREF_PATH].includes(attribute_value_type))
             {
                 if (ipstmt.key && ipstmt.data){
                     interpol_value = ipstmt.data[ipstmt.key];
@@ -1252,7 +1271,7 @@ class BareaApp
             }
             else if (attribute_value_type === BareaHelper.INTERPOL_INDEX)
             {
-                interpol_value = this.#getClosestAttribute(interpolatednode.parentElement, BareaHelper.META_ARRAY_INDEX);
+                interpol_value = String(ui.renderedindex);
             }
     
             if (!interpol_value)
@@ -1339,9 +1358,6 @@ class BareaApp
                     this.#internalSystemCounter++;
                     const newtag = document.createElement(ui.templatetagname);
                     newtag.innerHTML = ui.templatemarkup;
-                    newtag.setAttribute(BareaHelper.META_ARRAY_VARNAME, varname);
-                    newtag.setAttribute(BareaHelper.META_ARRAY_INDEX, counter);
-                    newtag.setAttribute(BareaHelper.META_IS_GENERATED_MARKUP, true);
 
                     if (newtag.id)
                         newtag.id = newtag.id + `-${this.#internalSystemCounter}` 
@@ -1354,9 +1370,6 @@ class BareaApp
                     let templatechildren = newtag.querySelectorAll("*"); 
                     templatechildren.forEach(child => 
                     {
-                        child.setAttribute(BareaHelper.META_ARRAY_VARNAME, varname);
-                        child.setAttribute(BareaHelper.META_ARRAY_INDEX, counter);
-                        child.setAttribute(BareaHelper.META_IS_GENERATED_MARKUP, true);
 
                         if (child.id)
                             child.id = child.id + `-${this.#internalSystemCounter}` 
@@ -1369,7 +1382,7 @@ class BareaApp
                     
                     });
 
-                    this.#trackDirectives(newtag, {templateid:ui.id, templatedata:row, index:counter, templatevarname:varname});
+                    this.#trackDirectives(newtag, {template:ui, rendereddata:row, renderedindex:counter, renderedvarname:varname});
                     counter++;
                 });
 
@@ -1426,38 +1439,7 @@ class BareaApp
                 }
                
 
-                let counter=0;
-                foreacharray.forEach(row => 
-                {
-                    let deps = this.#uiDependencyTracker.getDependencies(row);
-                    deps.forEach(ui=>{
-                        if (ui.element){
-                            ui.element.setAttribute(BareaHelper.META_ARRAY_INDEX, counter);
-
-                            let templatechildren = ui.element.querySelectorAll("*"); 
-                            templatechildren.forEach(child => 
-                            {
-                                child.setAttribute(BareaHelper.META_IS_GENERATED_MARKUP, true);
-                                child.setAttribute(BareaHelper.META_ARRAY_VARNAME, varname);
-                                child.setAttribute(BareaHelper.META_ARRAY_INDEX, counter);
-                            
-                            });
-
-                        }
-                
-                        counter++;
-                    });
-                });
-
-                foreacharray.forEach(row => 
-                    {
-                        let deps = this.#uiDependencyTracker.getDependencies(row);
-
-                        deps.forEach(ui=>{
-                            if (ui.directive===BareaHelper.DIR_INTERPOLATION)
-                                this.#setInterpolation(ui);
-                        });
-                    });
+              
               
             }
         
@@ -1468,11 +1450,7 @@ class BareaApp
         this.#internalSystemCounter++;
         const newtag = document.createElement(template.templatetagname);
         newtag.innerHTML = template.templatemarkup;
-        newtag.setAttribute(BareaHelper.META_IS_GENERATED_MARKUP, true);
-        newtag.setAttribute(BareaHelper.META_ARRAY_VARNAME, varname);
-        newtag.setAttribute(BareaHelper.META_ARRAY_INDEX, index);
-  
-
+       
         if (newtag.id)
             newtag.id = newtag.id + `-${this.#internalSystemCounter}` 
         else
@@ -1481,10 +1459,7 @@ class BareaApp
         let templatechildren = newtag.querySelectorAll("*"); 
         templatechildren.forEach(child => 
         {
-            child.setAttribute(BareaHelper.META_IS_GENERATED_MARKUP, true);
-            child.setAttribute(BareaHelper.META_ARRAY_VARNAME, varname);
-            child.setAttribute(BareaHelper.META_ARRAY_INDEX, index);
-
+           
             if (child.id)
                 child.id = child.id + `-${this.#internalSystemCounter}` 
             else
@@ -1496,7 +1471,7 @@ class BareaApp
         
         });
 
-        this.#trackDirectives(newtag, {templateid:template.id, templatedata:row, index:-1, templatevarname:varname});
+        this.#trackDirectives(newtag, {template:template, rendereddata:row, renderedindex:index, renderedvarname:varname});
         return newtag;
     }
 
@@ -1563,7 +1538,7 @@ class BareaApp
             if (expression.includes('(') || expression.includes(')'))
                 return BareaHelper.EXPR_TYPE_INVALID;
 
-            if (expression.toLowerCase() === BareaHelper.INTERPOL_INDEX)
+            if (expression.toLowerCase() === (varname + '.' + BareaHelper.INTERPOL_INDEX))
                 return BareaHelper.INTERPOL_INDEX;
 
             if (expression.toLowerCase().startsWith('root.'))
@@ -2115,27 +2090,25 @@ class BareaHelper
 
 
     //Dom meta data
-    static META_ARRAY_VARNAME = 'ba-varname';
-    static META_ARRAY_INDEX = 'ba-index';
     static META_PATH = 'ba-path';
     static META_DYN_FUNC_PREFIX = 'dynFunc_';
     static META_DYN_TEMPLATE_FUNC_PREFIX = 'dynTemplFunc_';
-    static META_IS_GENERATED_MARKUP= 'ba-generated';
 
-    // Special interpolation expressions
+
+    //Special interpolation expressions
     static INTERPOL_INDEX = 'index';
 
 
     //Expression types
-    static EXPR_TYPE_ROOT_PATH = 'path';
-    static EXPR_TYPE_HANDLER = 'handler';
+    static EXPR_TYPE_ROOT_PATH = 'root-path';
+    static EXPR_TYPE_HANDLER = 'static-handler';
     static EXPR_TYPE_COMPUTED = 'computed';
-    static EXPR_TYPE_OBJREF = 'objref';
-    static EXPR_TYPE_OBJREF_PATH = 'objpath';
-    static EXPR_TYPE_OBJREF_EXPR = 'objexpr';
-    static EXPR_TYPE_ROOT_EXPR = 'rootexpr';
-    static EXPR_TYPE_MIX_EXPR = 'mixexpr';
-    static EXPR_TYPE_INVALID = 'invalid';
+    static EXPR_TYPE_OBJREF = 'child-obj';
+    static EXPR_TYPE_OBJREF_PATH = 'child-obj-path';
+    static EXPR_TYPE_OBJREF_EXPR = 'child-obj-expression';
+    static EXPR_TYPE_ROOT_EXPR = 'root-expr';
+    static EXPR_TYPE_MIX_EXPR = 'root-and-child-expression';
+    static EXPR_TYPE_INVALID = 'invalid-expression';
 
     //The root of your data
     static ROOT_OBJECT = 'root';
