@@ -30,7 +30,6 @@ class BareaApp
     #mountedHandler=null;
     #computedProperties = {};
     #enableBareaId = false;
-    #enableInterpolation = true;
     #enableHideUnloaded=false;
     #uiDependencyTracker=null;
     #computedPropertiesDependencyTracker =  null;
@@ -176,12 +175,6 @@ class BareaApp
         return this.#appDataProxy;
     }
 
-    enableInterpolation(value)
-    {
-        if (this.#isPrimitive(value))
-            this.#enableInterpolation = value;
-    }
-
     enableHideBeforeLoaded(value)
     {
         if (this.#isPrimitive(value))
@@ -312,18 +305,6 @@ class BareaApp
                     this.#appDataProxyCache.set(value, proxiedvalue);
                     return proxiedvalue;
 
-                    //Don't proxy the array, only objects, then function will not be found
-                    // if (!Array.isArray(value)) {
-                    //     return this.#createReactiveProxy(callback, value, newPath); 
-                    // } else {
-       
-                    //     value.forEach((item, index) => {
-                    //         if (typeof item === "object" && item !== null) {
-                    //             return this.#createReactiveProxy(callback, item, newPath); 
-                    //         }
-                    //     });
-                    // }
-
                 }else{
 
                     if(typeof value === "function")
@@ -338,9 +319,7 @@ class BareaApp
                                 this.bareaWrappedMethods.set(funckey, (...args) => 
                                 {
 
-                                    //let proxiedArgs = args.map(arg => this.#makeReactive.call(this, callback, arg, currentpath));
-                                    //const result = Array.prototype[value.name].apply(target, args);
-
+                    
                                     // let proxiedArgs = args.map(arg => 
                                     //     (typeof arg === "object" && arg !== null) ? this.#createReactiveProxy(callback, arg) : arg
                                     // );
@@ -396,7 +375,7 @@ class BareaApp
 
     }
 
-    #trackDirectives(tag=this.#appElement, trackcontext={template:null, rendereddata:null, renderedindex:-1, renderedvarname:""})
+    #trackDirectives(tag=this.#appElement, trackcontext={template:null, rendereddata:null, renderedindex:-1, renderedvarname:"", renderedobjid:-1})
     {
       
 
@@ -805,11 +784,8 @@ class BareaApp
 
         });
 
-        //Interpolation is detected in text nodes {{interplation}}
-        if (this.#enableInterpolation)
-        {
+      
             let nodes_with_expressions = this.#getInterplationNodesAndExpressions(tag);
-            
             nodes_with_expressions.forEach(inode=>
             {
 
@@ -861,6 +837,7 @@ class BareaApp
                         //Wont be tracked
                         tracking_obj.isrendered = true;
                         tracking_obj.iscomputed = false;
+                        tracking_obj.data = trackcontext.rendereddata;
                         nodeexpressions.push(tracking_obj);   
                     }
                             
@@ -872,7 +849,10 @@ class BareaApp
                     nodeexpressions.forEach(ne=>
                     {
                         ne.nodeexpressions = nodeexpressions;
-                        if (ne.iscomputed && this.#computedProperties[ne.directivevalue]){
+                        if (ne.isrendered){
+                            this.#uiDependencyTracker.track('nontrackable', ne);
+                        }
+                        else if (ne.iscomputed && this.#computedProperties[ne.directivevalue]){
                             this.#computedProperties[ne.directivevalue].addDependenUserInterface(ne);
                         }else if (ne.key){
                             this.#uiDependencyTracker.track('value', ne);
@@ -887,9 +867,7 @@ class BareaApp
                 }
                        
             });
-
-        }
-                
+       
            
         let log = this.#getConsoleLog(4);
         if (log.active){length
@@ -1003,23 +981,23 @@ class BareaApp
     #createComputedDirective(trackcontext, element, directive, directivevalue)
     {
         let id = this.#internalSystemCounter++;
-        return {id: id, renderedvarname: trackcontext.renderedvarname, template: trackcontext.template, directive:directive,  directivevalue:directivevalue, element: element, data:null, key:"", hashandler:false, handlername:"", inputtype:-1, iscomputed:true };
+        return {id: id, renderedobjid:trackcontext.renderedobjid,  renderedvarname: trackcontext.renderedvarname, template: trackcontext.template, directive:directive,  directivevalue:directivevalue, element: element, data:null, key:"", hashandler:false, handlername:"", inputtype:-1, iscomputed:true };
     }
 
     #createInputDirective(trackcontext, element, directive, directivevalue, data, key, inputtype)
     {
         let id = this.#internalSystemCounter++;
-        return {id: id, renderedvarname: trackcontext.renderedvarname, template: trackcontext.template, directive:directive,  directivevalue:directivevalue, element: element, data:data, key:key, hashandler:false, handlername:"", inputtype:inputtype,iscomputed:false };
+        return {id: id, renderedobjid:trackcontext.renderedobjid, renderedvarname: trackcontext.renderedvarname, template: trackcontext.template, directive:directive,  directivevalue:directivevalue, element: element, data:data, key:key, hashandler:false, handlername:"", inputtype:inputtype,iscomputed:false };
     }
     #createTemplateDirective(trackcontext, element, directive, directivevalue, data, key,  parentelement, templatemarkup, templatetagname)
     {
         let id = this.#internalSystemCounter++;
-        return {id: id, renderedvarname: trackcontext.renderedvarname, template: trackcontext.template, directive:directive,  directivevalue:directivevalue, element: element, data:data, key:key, hashandler:false, handlername:"", inputtype:-1, iscomputed:false, parentelement : parentelement, templatemarkup : templatemarkup, templatetagname : templatetagname };
+        return {id: id, renderedobjid:trackcontext.renderedobjid, renderedvarname: trackcontext.renderedvarname, template: trackcontext.template, directive:directive,  directivevalue:directivevalue, element: element, data:data, key:key, hashandler:false, handlername:"", inputtype:-1, iscomputed:false, parentelement : parentelement, templatemarkup : templatemarkup, templatetagname : templatetagname };
     }
     #createInterpolationDirective(trackcontext, directive, directivevalue, data, key,interpolatednode, expression, nodetemplate)
     {
         let id = this.#internalSystemCounter++;
-        return {id: id, renderedvarname: trackcontext.renderedvarname, template: trackcontext.template, directive:directive,  directivevalue:directivevalue, element: null, data:data, key:key, hashandler:false, handlername:"", inputtype:-1, iscomputed:false, isrendered:false, interpolatednode: interpolatednode, expression: expression, nodetemplate:nodetemplate, nodeexpressions:[], renderedindex: trackcontext.renderedindex  };
+        return {id: id, renderedobjid:trackcontext.renderedobjid, renderedvarname: trackcontext.renderedvarname, template: trackcontext.template, directive:directive,  directivevalue:directivevalue, element: null, data:data, key:key, hashandler:false, handlername:"", inputtype:-1, iscomputed:false, isrendered:false, interpolatednode: interpolatednode, expression: expression, nodetemplate:nodetemplate, nodeexpressions:[], renderedindex: trackcontext.renderedindex  };
     }
 
     #handleUITrackerNofify = (reasonobj, reasonkey, reasonvalue, path, resultset, reasonfuncname) =>
@@ -1299,7 +1277,7 @@ class BareaApp
      */
     #renderTemplates(ui, path='root', reasonarray, arrayfuncname, arrayfuncargs) 
     {
-        let always_rerender = true;
+        let always_rerender = false;
         let foreacharray = [];
      
 
@@ -1345,10 +1323,11 @@ class BareaApp
             }
 
       
-            //Re render template every time notified
-           let counter=0;
+            //Re render template on assigmnet and if using a comuted property as source
            if (always_rerender)
            {
+                let counter=0;
+
                 //Clean all dependencies on templateid
                 this.#uiDependencyTracker.removeTemplateDependencies(ui.id);
 
@@ -1382,18 +1361,12 @@ class BareaApp
                     
                     });
 
-                    this.#trackDirectives(newtag, {template:ui, rendereddata:row, renderedindex:counter, renderedvarname:varname});
+                    this.#trackDirectives(newtag, {template:ui, rendereddata:row, renderedindex:counter, renderedvarname:varname, renderedobjid: this.#internalSystemCounter});
                     counter++;
                 });
 
                 if (fragment.childElementCount>0)
                     ui.parentelement.appendChild(fragment);  
-
-                // BareaHelper.ARRAY_FUNCTIONS.forEach(f=>
-                // {
-                //     this.#uiDependencyTracker.track('object', ui, foreacharray, f);
-                // });
-
             }
             else
             {
@@ -1401,14 +1374,14 @@ class BareaApp
                
 
                 if (arrayfuncname === "push" && arrayfuncargs) {
-                    arrayfuncargs.forEach(item => {
-                        let newItem = this.#getTemplateElement(ui, varname, item, foreacharray.length);
+                    arrayfuncargs.forEach(row => {
+                        let newItem = this.#getTemplateElement(ui, varname, row);
                         ui.parentelement.appendChild(newItem);
                     });
                 } 
                 else if (arrayfuncname === "unshift" && arrayfuncargs) {
-                    arrayfuncargs.reverse().forEach(item => {
-                        let newItem = this.#getTemplateElement(ui, varname, item, 0);
+                    arrayfuncargs.reverse().forEach(row => {
+                        let newItem = this.#getTemplateElement(ui, varname, row);
                         ui.parentelement.insertBefore(newItem,  ui.parentelement.firstChild);
                     });
                 }
@@ -1437,15 +1410,28 @@ class BareaApp
                     //     ui.parentelement.insertBefore(newItem,  ui.parentelement.children[start] || null);
                     // });
                 }
-               
 
-              
+                let counter=0;
+                //foreacharray = this.getPathData(datapath);
+                foreacharray.forEach(row=>{
+                    let directives = this.#uiDependencyTracker.getObjectDependencies(row, ui.id);
+                    directives.forEach(dir =>{
+                        if (dir.directive === BareaHelper.DIR_INTERPOLATION && dir.isrendered)
+                        {
+                            dir.renderedindex=counter;
+                            this.#setInterpolation(dir);
+                            counter++; 
+                        }
+                    });
+                   
+                });
+ 
               
             }
         
     }
 
-    #getTemplateElement(template, varname, row, index)
+    #getTemplateElement(template, varname, row)
     {
         this.#internalSystemCounter++;
         const newtag = document.createElement(template.templatetagname);
@@ -1471,7 +1457,7 @@ class BareaApp
         
         });
 
-        this.#trackDirectives(newtag, {template:template, rendereddata:row, renderedindex:index, renderedvarname:varname});
+        this.#trackDirectives(newtag, {template:template, rendereddata:row, renderedindex:-1, renderedvarname:varname, renderedobjid: this.#internalSystemCounter});
         return newtag;
     }
 
@@ -1558,58 +1544,6 @@ class BareaApp
 
     }
 
-   
-    #getClosestBareaObject(element)
-    {
-        if (element.hasOwnProperty("_bareaObject"))
-            return element._bareaObject;
-
-        let val=null;
-        let p = element.parentElement;
-        let safecnt=0;
-        while (!val && p)
-        {
-            safecnt++;
-            if (p.hasOwnProperty("_bareaObject"))
-                val = p._bareaObject;
-
-            p=p.parentElement;
-
-            if (safecnt>10)
-                break;
-        }
-
-        return val || null;
-    }
-
-    #getClosestAttribute(element, name)
-    {
-        let val = element.getAttribute(name);
-        let p = element.parentElement;
-        let safecnt=0;
-        while (!val && p)
-        {
-            safecnt++;
-            val = p.getAttribute(name);
-            p=p.parentElement;
-            if (safecnt>10)
-                break;
-        }
-        return val || "";
-    }
-
-   
-    #getInterpolationPaths(str) {
-        const regex = /{{(.*?)}}/g;
-        let matches = [];
-        let match;
-    
-        while ((match = regex.exec(str)) !== null) {
-            matches.push(match[1].trim()); // Trim spaces inside {{ }}
-        }
-    
-        return matches;
-    }
 
     #extractInterpolations(text) {
         const regex = /\{\{\s*.*?\s*\}\}/g;
@@ -1617,8 +1551,6 @@ class BareaApp
     }
 
     
-
-
     #isPrimitive(value)
     {
         let result = value !== null && typeof value !== "object" && typeof value !== "function";
@@ -1905,11 +1837,10 @@ class BareaApp
                 let keystodelete = [];
                 this.#dependencies.forEach((value, key) => 
                 {
-                    for (const item of value) 
+                    for (const directive of value) 
                     {
-                        if (item.templateid===templateid && templateid!==-1)
-                            if (this.#objectReference.has(item.data)) 
-                                keystodelete.push(key);
+                        if (directive.template && directive.template.id===templateid && templateid!==-1)
+                            keystodelete.push(key);
                     }       
                 });
 
@@ -1920,7 +1851,7 @@ class BareaApp
                 Object.keys(computedProperties).forEach(key => {
                     //Create an array before deleting in the set
                     for (let directive of [...computedProperties[key].userInterfaces]) {
-                        if (directive.templateid===templateid)
+                        if (directive.template && directive.template.id===templateid)
                             computedProperties[key].userInterfaces.delete(directive);
                     }
                 });
@@ -1932,11 +1863,8 @@ class BareaApp
                 let keystodelete = [];
                 this.#dependencies.forEach((value, key) => 
                 {
-                    for (const item of value) 
-                    {
-                        if (this.#objectReference.has(object)) 
-                            keystodelete.push(key);
-                    }       
+                    if (this.#objectReference.has(object)) 
+                        keystodelete.push(key);  
                 });
 
                 for (let i = 0; i < keystodelete.length-1; i++)
@@ -1944,20 +1872,39 @@ class BareaApp
 
             }
 
-            getDependencies(object)
+            getObjectDependencies(object, templateid=-1)
             {
-                let connectedui = [];
+                let directives = [];
+                this.#dependencies.forEach((value, key) => 
+                {
+                    for (const directive of value) 
+                    {
+                        if (directive.template && directive.data && directive.template.id===templateid && Object.is(directive.data, object)) 
+                            directives.push(directive);  
+                    }
+                });
+
+               return directives;
+
+            }
+
+            getTemplateDependencies(templateid=-1)
+            {
+                if (templateid<0)
+                    return [];
+
+                let directives = [];
                 this.#dependencies.forEach((value, key) => 
                 {
                     for (const item of value) 
                     {
-                        if (this.#objectReference.has(object) && object === item.data) 
-                            connectedui.push(item);
+                        if (item.template && item.template.id ===  templateid) 
+                            directives.push(item);
                     }       
                 });
 
 
-                return connectedui;
+                return directives;
             } 
 
             getAllDependencies()
@@ -1969,7 +1916,7 @@ class BareaApp
             {
                 this.#trackingCalls++;
 
-                if (!ui.data)
+                if (!ui.data && !ui.isrendered)
                     console.error(`Tracked UI has no data`,ui);
 
                 if (BareaHelper.DIR_GROUP_COMPUTED.includes(ui.directive))
@@ -1985,6 +1932,8 @@ class BareaApp
                 else if (scope==='object')
                 {
                     depKey = this.#getObjectId(object).id + ":object:"; 
+                }else{
+                    depKey=scope;                   
                 }
 
                 if (!depKey)
