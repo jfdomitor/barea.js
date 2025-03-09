@@ -266,7 +266,7 @@
                                 <td>{{show}}</td>
                             </tr>
                             -->
-                            <tr ba-foreach="show in root.model.shows">
+                            <tr ba-foreach="show in sortedShows">
                                 <td ba-class-if="show.marked?bluebg">
                                     <span ba-show="!root.edit">{{show.index}}</span>
                                     <span ba-show="lineShowEdit"><input type="checkbox" ba-bind="show.marked" /></span>
@@ -402,7 +402,7 @@
                 {
                   
                     let modifier = this.getData().sortOrder;
-                    let data = this.getData().model.shows.slice(0,this.getData().addMoreCount);
+                    let data = this.getData().model.shows;
                     let sorted_data = data.sort((a, b) => {
                             let valA = a['Note'] || ""; // Convert undefined to ""
                             let valB = b['Note'] || ""; // Convert undefined to ""

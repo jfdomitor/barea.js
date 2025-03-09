@@ -1054,11 +1054,6 @@ class BareaApp
             }   
             else if (BareaHelper.DIR_GROUP_MARKUP_GENERATION.includes(directive.directivename)){
 
-                if (!Array.isArray(reasonvalue)){
-                    console.error('Did not receive an array to render a template, should not happen if there is a god');
-                    return; 
-                }
-
                 if (reasonfuncname && BareaHelper.ARRAY_FUNCTIONS.includes(reasonfuncname))
                     this.#renderTemplates(directive,path,null,reasonfuncname, reasonvalue); 
                 else
@@ -1552,9 +1547,6 @@ class BareaApp
         ];
     } 
 
-    
-                   
-    /* Dom Handler */
     #loadedHandler =  (event) => {
        if (this.#enableHideUnloaded)
        {
@@ -1864,7 +1856,7 @@ class BareaApp
             {
                 this.#trackingCalls++;
 
-                if (!directive.data && !directive.isrendered)
+                if (!directive.data && !directive.isrendered && !BareaHelper.DIR_GROUP_MARKUP_GENERATION.includes(directive.directivename))
                     console.error(`Tracked UI has no data`,directive);
 
                 if (BareaHelper.DIR_GROUP_COMPUTED.includes(directive.directivename))
@@ -1915,7 +1907,7 @@ class BareaApp
                         objectset= new Set();
 
                     let resultset = new Set([...valueset, ...objectset]);
-                    if (resultset.length===0)
+                    if (resultset.size===0)
                         return;
     
                     this.#notifycallback(reasonobj, reasonkey, reasonvalue, path, resultset, reasonfuncname);
