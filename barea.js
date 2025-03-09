@@ -850,7 +850,7 @@ class BareaApp
                     tracking_obj.data = trackcontext.rendereddata;
                     nodeexpressions.push(tracking_obj); 
                     if (trackcontext.template)  
-                        trackcontext.template.userenderedinterpolation = true;
+                        trackcontext.template.usesReRenderedInterpolation = true;
                 }
                         
             });  
@@ -1005,7 +1005,7 @@ class BareaApp
     #createTemplateDirective(trackcontext, element, directivename, directivevalue, data, key,  parentelement, templatemarkup, templatetagname)
     {
         let id = this.#internalSystemCounter++;
-        return {id: id, renderedobjid:trackcontext.renderedobjid, renderedvarname: trackcontext.renderedvarname, template: trackcontext.template, directivename:directivename,  directivevalue:directivevalue, element: element, data:data, key:key, hashandler:false, handlername:"", inputtype:-1, iscomputed:false, parentelement : parentelement, templatemarkup : templatemarkup, templatetagname : templatetagname, userenderedinterpolation:false };
+        return {id: id, renderedobjid:trackcontext.renderedobjid, renderedvarname: trackcontext.renderedvarname, template: trackcontext.template, directivename:directivename,  directivevalue:directivevalue, element: element, data:data, key:key, hashandler:false, handlername:"", inputtype:-1, iscomputed:false, parentelement : parentelement, templatemarkup : templatemarkup, templatetagname : templatetagname, usesReRenderedInterpolation:false };
     }
     #createInterpolationDirective(trackcontext, directivename, directivevalue, data, key,interpolatednode, expression, nodetemplate)
     {
@@ -1284,149 +1284,122 @@ class BareaApp
      */
     #renderTemplates(template_directive, path='root', reasonarray, arrayfuncname, arrayfuncargs) 
     {
-        let elementsremoved = false;
-        let always_rerender = false;
+        let elementsRemoved = false;
+        let fullReRender = false;
         let foreacharray = [];
-     
-            let [varname, datapath] = template_directive.directivevalue.split(" in ").map(s => s.trim());
-            if (!varname)
-            {
-                console.error(`No variable name was found in the ${template_directive.directivename} expression`);
-                return;
-            }
-            if (!datapath)
-            {
-                console.error(`No path or computed function was found in the ${template_directive.directivename} expression`);
-                return;
-            }
 
-            if (arrayfuncname === 'shift' || arrayfuncname === 'pop' || arrayfuncname === 'splice')
-                elementsremoved=true;    
+        let [varname, datapath] = template_directive.directivevalue.split(" in ").map(s => s.trim());
+        if (!varname)
+        {
+            console.error(`No variable name was found in the ${template_directive.directivename} expression`);
+            return;
+        }
+        if (!datapath)
+        {
+            console.error(`No path or computed function was found in the ${template_directive.directivename} expression`);
+            return;
+        }
 
-            if (this.#getExpressionType(datapath, template_directive.directivename)===BareaHelper.EXPR_TYPE_COMPUTED)
-            {
-                //If computed function always rerender
-                always_rerender=true;
+        let sourcetype = this.#getExpressionType(datapath, template_directive.directivename);
+        if (sourcetype===BareaHelper.EXPR_TYPE_INVALID){
+            console.error(`The expression for the directive ${template_directive.directivename} value: ${template_directive.directivevalue} is not valid`);
+            return;
+        }
 
-                if (this.#computedProperties[datapath])
-                    foreacharray = this.#computedProperties[datapath].value;
-                else
-                    console.warn(`Could not find computed function name in the ${template_directive.directivename} directive`);
 
-            }
+        if (arrayfuncname && (arrayfuncname === 'shift' || arrayfuncname === 'pop' || arrayfuncname === 'splice'))
+            elementsRemoved=true;    
+        if (arrayfuncname && (arrayfuncname === 'sort' || arrayfuncname === 'reverse' || arrayfuncname === 'splice'))
+            fullReRender = true;
+        if (sourcetype===BareaHelper.EXPR_TYPE_COMPUTED)
+            fullReRender = true;
+        if (arrayfuncname && !BareaHelper.ARRAY_FUNCTIONS.includes(arrayfuncname))
+            fullReRender = true;
+        if (reasonarray && !arrayfuncname)
+            fullReRender = true;
+
+        if (sourcetype===BareaHelper.EXPR_TYPE_COMPUTED)
+        {
+            if (this.#computedProperties[datapath])
+                foreacharray = this.#computedProperties[datapath].value;
             else
-            {
-                //If a new array is assigned always rerender
-                if (reasonarray || (arrayfuncname === 'sort' || arrayfuncname === 'reverse' || arrayfuncname === 'splice'))
-                    always_rerender = true;
-             
-                //If not an assigned array or function on an array, skip
-                if (!reasonarray && !BareaHelper.ARRAY_FUNCTIONS.includes(arrayfuncname))
-                    return;
+                console.warn(`Could not find computed function name in the ${template_directive.directivename} directive`);
 
-                if (reasonarray && always_rerender){
-                    foreacharray = reasonarray; 
-                }else{
-                    foreacharray = this.getProxifiedPathData(path);
-                }  
-               
-            }
+        }
+        else
+        {
+            if (reasonarray){
+                foreacharray = reasonarray; 
+            }else{
+                foreacharray = this.getProxifiedPathData(datapath);
+            }      
+        }
 
       
-            //Re render template on assigmnet and if using a comuted property as source
-           if (always_rerender)
-           {
-                let counter=0;
+        if (fullReRender)
+        {
+            let counter=0;
+            this.#uiDependencyTracker.removeTemplateDependencies(template_directive.id);
 
-                //Clean all dependencies on templateid
-                this.#uiDependencyTracker.removeTemplateDependencies(template_directive.id);
+            template_directive.parentelement.innerHTML = "";
+            const fragment = document.createDocumentFragment();
+            foreacharray.forEach(row => {
+   
+                let newItem = this.#getNewTemplateElement(template_directive, varname, row, counter);
+                fragment.appendChild(newItem);
+                this.#trackDirectives(newItem, {template:template_directive, rendereddata:row, renderedindex:counter, renderedvarname:varname, renderedobjid: this.#internalSystemCounter});
+                counter++;
+            });
 
-                template_directive.parentelement.innerHTML = "";
-                const fragment = document.createDocumentFragment();
-                foreacharray.forEach(row => {
-                    this.#internalSystemCounter++;
-                    const newtag = document.createElement(template_directive.templatetagname);
-                    newtag.innerHTML = template_directive.templatemarkup;
+            if (fragment.childElementCount>0)
+                template_directive.parentelement.appendChild(fragment);  
 
-                    if (newtag.id)
-                        newtag.id = newtag.id + `-${this.#internalSystemCounter}` 
-                    else
-                        newtag.id = `${template_directive.id}-${varname}-${this.#internalSystemCounter}`; 
-
-                    fragment.appendChild(newtag);
-                
-                    //Mark the children for easier tracking
-                    let templatechildren = newtag.querySelectorAll("*"); 
-                    templatechildren.forEach(child => 
-                    {
-
-                        if (child.id)
-                            child.id = child.id + `-${this.#internalSystemCounter}` 
-                        else
-                            child.id = `${varname}-${this.#internalSystemCounter}`; 
-
-                        let forattrib = child.getAttribute("for");
-                        if (forattrib)
-                            child.setAttribute("for", forattrib + `-${this.#internalSystemCounter}`); 
-                    
-                    });
-
-                    this.#trackDirectives(newtag, {template:template_directive, rendereddata:row, renderedindex:counter, renderedvarname:varname, renderedobjid: this.#internalSystemCounter});
-                    counter++;
+        }
+        else
+        {
+            if (arrayfuncname === "push" && arrayfuncargs) {
+                arrayfuncargs.forEach(row => {
+                    let newItem = this.#getNewTemplateElement(template_directive, varname, row,-1);
+                    template_directive.parentelement.appendChild(newItem);
                 });
-
-                if (fragment.childElementCount>0)
-                    template_directive.parentelement.appendChild(fragment);  
+            } 
+            else if (arrayfuncname === "unshift" && arrayfuncargs) {
+                arrayfuncargs.reverse().forEach(row => {
+                    let newItem = this.#getNewTemplateElement(template_directive, varname, row,-1);
+                    template_directive.parentelement.insertBefore(newItem,  template_directive.parentelement.firstChild);
+                });
             }
-            else
-            {
-            
-                
-                if (arrayfuncname === "push" && arrayfuncargs) {
-                    arrayfuncargs.forEach(row => {
-                        let newItem = this.#getTemplateElement(template_directive, varname, row);
-                        template_directive.parentelement.appendChild(newItem);
-                    });
-                } 
-                else if (arrayfuncname === "unshift" && arrayfuncargs) {
-                    arrayfuncargs.reverse().forEach(row => {
-                        let newItem = this.#getTemplateElement(template_directive, varname, row);
-                        template_directive.parentelement.insertBefore(newItem,  template_directive.parentelement.firstChild);
-                    });
-                }
-                else if (arrayfuncname === "pop") {
-                    template_directive.parentelement.removeChild(template_directive.parentelement.lastChild);
-                }
-                else if (arrayfuncname === "shift") {
-                    template_directive.parentelement.removeChild(template_directive.parentelement.firstChild);
-                }
+            else if (arrayfuncname === "pop") {
+                template_directive.parentelement.removeChild(template_directive.parentelement.lastChild);
+            }
+            else if (arrayfuncname === "shift") {
+                template_directive.parentelement.removeChild(template_directive.parentelement.firstChild);
+            }
                
-                if (template_directive.userenderedinterpolation)
-                {
-                    let counter=0;
-                    foreacharray.forEach(row=>{
-                        let directives = this.#uiDependencyTracker.getObjectDependencies(row, template_directive.id);
-                        directives.forEach(dir =>{
-                            if (dir.directivename === BareaHelper.DIR_INTERPOLATION && dir.isrendered)
-                            {
-                                dir.renderedindex=counter;
-                                this.#setInterpolation(dir);
-                                counter++; 
-                            }
-                        });
-                    
-                    });
-                }
- 
-              
+            if (template_directive.usesReRenderedInterpolation)
+            {
+                let counter=0;
+                foreacharray.forEach(row=>{
+                    let directives = this.#uiDependencyTracker.getObjectDependencies(row, template_directive.id);
+                    directives.forEach(dir =>{
+                        if (dir.directivename === BareaHelper.DIR_INTERPOLATION && dir.isrendered)
+                        {
+                            dir.renderedindex=counter;
+                            this.#setInterpolation(dir);
+                            counter++; 
+                        }
+                    });    
+                });
             }
+ 
+        }
 
-            if (elementsremoved)
-                this.#uiDependencyTracker.removeDeletedElementDependencies(template_directive.id);
+        if (elementsRemoved)
+            this.#uiDependencyTracker.removeDeletedElementDependencies(template_directive.id);
         
     }
 
-    #getTemplateElement(template, varname, row)
+    #getNewTemplateElement(template, varname, row, index=-1)
     {
         this.#internalSystemCounter++;
         const newtag = document.createElement(template.templatetagname);
@@ -1452,14 +1425,11 @@ class BareaApp
         
         });
 
-        this.#trackDirectives(newtag, {template:template, rendereddata:row, renderedindex:-1, renderedvarname:varname, renderedobjid: this.#internalSystemCounter});
+        this.#trackDirectives(newtag, {template:template, rendereddata:row, renderedindex:index, renderedvarname:varname, renderedobjid: this.#internalSystemCounter});
         return newtag;
     }
 
    
-
-    /*** Internal Helpers ***/
-
     #getExpressionType = function(expression, directive, varname) 
     {
         if (BareaHelper.DIR_GROUP_BIND_TO_PATH.includes(directive))
@@ -1536,9 +1506,7 @@ class BareaApp
 
     
         return BareaHelper.EXPR_TYPE_INVALID;
-
     }
-
 
     #extractInterpolations(text) {
         const regex = /\{\{\s*.*?\s*\}\}/g;
@@ -1552,8 +1520,7 @@ class BareaApp
         return result;
     }
 
-    
-    /*  Logging  */
+
     enableConsoleLog(id, active)
     {
         const logidx = this.#consoleLogs.findIndex(p=> p.id===id);
@@ -1728,8 +1695,13 @@ class BareaApp
                 }
             }
 
-            //Called on proxy change set
-            //Finds a dependency and notifies all subscribers
+            /**
+            * Called on proxy change (proxy handler set)
+            * Sets computed properties dirty if the property is dependent on the objpath
+            * Updates directives that are dependent on the computed property that becomes dirty
+            * @param {string} objpath - The path in the data that was changed
+            * @param {string} funcname - If a function was used on an array, the name of the function
+            */
             notify(objpath, funcname) 
             {
                 if (!objpath)
@@ -1774,13 +1746,11 @@ class BareaApp
                         if (!subscribers.has(name))
                         {
                             subscribers.set(name, set_dirty_func);
-                            //console.log(`${name} is subscribing to path: ${principalpath}`);
                         }
                     },
                     notify(path) { 
                         subscribers.forEach((set_dirty_func, name) => {
                             set_dirty_func(path); 
-                            //console.log(`Notified ${name} with path: ${principalpath}`);
                         });
                     }
                 };
@@ -1789,7 +1759,6 @@ class BareaApp
         }
 
         return new ComputedPropertiesDependencyTracker();
-    
     }
 
     #getUserInterfaceTracker(notifycallback)
@@ -1879,20 +1848,6 @@ class BareaApp
 
             }
 
-            removeDependency(object)
-            {
-                let keystodelete = [];
-                this.#dependencies.forEach((value, key) => 
-                {
-                    if (this.#objectReference.has(object)) 
-                        keystodelete.push(key);  
-                });
-
-                for (let i = 0; i < keystodelete.length-1; i++)
-                    this.#dependencies.delete(keystodelete[i]);
-
-            }
-
             getObjectDependencies(object, templateid=-1)
             {
                 let directives = [];
@@ -1908,25 +1863,6 @@ class BareaApp
                return directives;
 
             }
-
-            getTemplateDependencies(templateid=-1)
-            {
-                if (templateid<0)
-                    return [];
-
-                let directives = [];
-                this.#dependencies.forEach((value, key) => 
-                {
-                    for (const item of value) 
-                    {
-                        if (item.template && item.template.id ===  templateid) 
-                            directives.push(item);
-                    }       
-                });
-
-
-                return directives;
-            } 
 
             getAllDependencies()
             {
@@ -1987,7 +1923,6 @@ class BareaApp
                     if (!objectset)
                         objectset= new Set();
 
-                
                     let resultset = new Set([...valueset, ...objectset]);
                     if (resultset.length===0)
                         return;
@@ -1996,9 +1931,7 @@ class BareaApp
                 }
                 else
                 {
-                  //Shouldn't happen
                   console.warn('UI dependency tracker was notified of an object that was not tracked', reasonobj);
-
                 }
               
             }
@@ -2007,7 +1940,6 @@ class BareaApp
             {
                 if (uiset)
                 {
-                    let resultset = new Set([...uiset]);
                     this.#notifycallback(null, "", null, "", uiset, "");
                 }
             }
