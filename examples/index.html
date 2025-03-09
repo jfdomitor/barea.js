@@ -402,20 +402,18 @@
                 {
                   
                     let modifier = this.getData().sortOrder;
-                    let data = this.getData().model.shows;
-                    let sorted_data = data.sort((a, b) => {
-                            let valA = a['Note'] || ""; // Convert undefined to ""
-                            let valB = b['Note'] || ""; // Convert undefined to ""
+                    let data = this.getData().model.shows.slice();
 
-                            if (valA < valB) return -1 * modifier;
-                            if (valA > valB) return 1 * modifier;
-                            return 0;
-                        });
+                    return data.sort((a, b) => {
+                        let valA = a['Note'] || "";
+                        let valB = b['Note'] || "";
 
+                        if (valA < valB) return -1 * modifier;
+                        if (valA > valB) return 1 * modifier;
 
-                    return sorted_data;
+                        return 0;
+                    });
                                 
-
                 },
                 createdByFullName: function()
                 {

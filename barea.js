@@ -26,7 +26,8 @@ class BareaApp
     #appData;
     #methods = {};
     #consoleLogs = [];
-    #mounted=false;
+    #mountStarted=false;
+    #mountFinnished=false;
     #mountedHandler=null;
     #computedProperties = {};
     #enableBareaId = false;
@@ -46,10 +47,10 @@ class BareaApp
 
     mount(element, content) 
     {
-        if (this.#mounted)
+        if (this.#mountStarted)
             return;
 
-        this.#mounted=true;
+        this.#mountStarted=true;
 
         if (!content){
             console.error('Illegal use of mount, please pass a content object with data and methods');
@@ -161,13 +162,15 @@ class BareaApp
             this.#mountedHandler.apply(this, [this.#appDataProxy]);
         }
    
+        //Important in dependency tracking
+        this.#mountFinnished=false;
 
         return this.#appDataProxy;
     }
 
     getData()
     {
-        if (!this.#mounted)
+        if (!this.#mountStarted)
         {
             console.warn("barea.js is not mounted. Call mount on the instance before using this method.");
             return;
@@ -285,7 +288,11 @@ class BareaApp
                 if (Array.isArray(target))
                 {
                     //These won't be detected otherwise
-                    BareaHelper.ARRAY_FUNCTIONS.forEach(f=>{ this.#computedPropertiesDependencyTracker.track(currentpath, f);});
+                    BareaHelper.ARRAY_FUNCTIONS.forEach(f=>{ 
+                        if (f==='sort') //Leads to infinity loop otherwise if sort is used inside a computed function
+                            return;
+                        this.#computedPropertiesDependencyTracker.track(currentpath, f);
+                    });
                 }
                 
                
@@ -1569,7 +1576,8 @@ class BareaApp
                 this.getter = func;
                 this.dirty = true;
                 this.dependencyPaths = new Set();
-                this.setDirty = (path) => {
+                this.setDirty = (path) => 
+                {
                     this.dirty = true;
                     userinterface_tracker.notifyDependentUserInterface(this.userInterfaces);
                 };
