@@ -1675,17 +1675,12 @@ class BareaApp
                 if (!objpath)
                     return;
 
-                let principalpath = BareaHelper.getPrincipalBareaPath(objpath);
-                if (!principalpath)
+                if (objpath===BareaHelper.ROOT_OBJECT)
                     return;
 
-                if (principalpath===BareaHelper.ROOT_OBJECT)
-                    return;
-
-                
                 let trackpath ="";
                 if (funcname)
-                    trackpath = principalpath+'.'+funcname.toLowerCase();
+                    trackpath = objpath+'.'+funcname.toLowerCase();
                 else
                     trackpath=objpath;
 
@@ -1707,16 +1702,12 @@ class BareaApp
                 if (!objpath)
                     return;
 
-                let principalpath = BareaHelper.getPrincipalBareaPath(objpath);
-                if (!principalpath)
-                    return;
-
-                if (principalpath===BareaHelper.ROOT_OBJECT)
+                if (objpath===BareaHelper.ROOT_OBJECT)
                     return;
 
                 let trackpath ="";
                 if (funcname)
-                    trackpath = principalpath+'.'+funcname.toLowerCase();
+                    trackpath = objpath+'.'+funcname.toLowerCase();
                 else
                     trackpath=objpath;
 
@@ -2018,19 +2009,6 @@ class BareaHelper
     //Array functions to handle in the proxy
     static ARRAY_FUNCTIONS = ['push', 'pop', 'splice', 'shift', 'unshift','reverse','sort']; 
 
-    //Path (String) functions
-    static getPrincipalBareaPath = function(path) 
-    {
-        const segments = path.split('.');
-        return segments.map(segment => {
-        const arrayIndexStart = segment.indexOf('[');
-        if (arrayIndexStart !== -1) {
-            return segment.slice(0, arrayIndexStart);
-        }
-        return segment; 
-        }).join('.'); 
-    }
-
     static getLastBareaKeyName = function(path)
     {
         if (!path)
@@ -2067,7 +2045,6 @@ class BareaHelper
             retval = path;
         
         return retval;
-
     }
 
     static parseBareaFunctionCall = function(str) 
@@ -2092,7 +2069,6 @@ class BareaHelper
 
         return { functionName, params };
     }
-
 
     static hasAnyChar = function(str, chars) 
     {
