@@ -400,11 +400,16 @@
 
                 sortedShows:function()
                 {
-                  
-                    let modifier = this.getData().sortOrder;
-                    let data = this.getData().model.shows.slice();
+        
+                    //This is used as a source for template rendering, very hard to understand
+                    //Very sensitive 
 
-                    return data.sort((a, b) => {
+                    let modifier = this.getData().sortOrder;
+                    //let data = this.getData().model.shows.slice(); //Works best
+                    let data = this.getData().model.shows; //Works halways gets the proxied array, but sorting wont work, why ?
+                    //let data = [...this.getData().model.shows]; //Doesn't work, returns a new unproxied array, that is rendered, but then unshift etc does not render
+            
+                    data.sort((a, b) => {
                         let valA = a['Note'] || "";
                         let valB = b['Note'] || "";
 
@@ -413,6 +418,8 @@
 
                         return 0;
                     });
+
+                    return data;
                                 
                 },
                 createdByFullName: function()

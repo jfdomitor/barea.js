@@ -276,24 +276,48 @@ class BareaApp
 
                 let value = Reflect.get(target, key, receiver);
 
-                const newPath = Array.isArray(target) ? `${currentpath}[${key}]` : `${currentpath}.${key}`;
-              
-                //They will only be tracked if the computed function is run
-                //The function activates tracking
-                if(typeof value === "function" && BareaHelper.ARRAY_FUNCTIONS.includes(value.name))
-                    this.#computedPropertiesDependencyTracker.track(newPath, value.name);
-                else
-                    this.#computedPropertiesDependencyTracker.track(newPath, null);
+                if (key === Symbol.iterator) {
+                    return (function* () {
+                        let index = 0; // Track index for correct paths
+                        for (let item of target) {
+                            let itemPath = `${currentpath}[${index++}]`; // Unique path per item
+                
+                            if (typeof item === 'object' && item !== null) {
+                                if (this.#appDataProxyCache.has(item)) {
+                                    yield this.#appDataProxyCache.get(item);
+                                } else {
+                                    const proxiedItem = this.#createReactiveProxy(callback, item, itemPath);
+                                    this.#appDataProxyCache.set(item, proxiedItem);
+                                    yield proxiedItem;
+                                }
+                            } else {
+                                yield item;
+                            }
+                        }
+                    }).bind(this);
+                }
+                
 
                 if (Array.isArray(target))
                 {
                     //These won't be detected otherwise
                     BareaHelper.ARRAY_FUNCTIONS.forEach(f=>{ 
-                        if (f==='sort') //Leads to infinity loop otherwise if sort is used inside a computed function
-                            return;
+                    if (f.includes('sort','reverse')) //Leads to infinity loop otherwise if sort is used inside a computed function
+                        return;
+                            
                         this.#computedPropertiesDependencyTracker.track(currentpath, f);
                     });
                 }
+
+                const newPath = Array.isArray(target) ? `${currentpath}[${key}]` : `${currentpath}.${key}`;
+              
+                //Automatic dependency tracking, mysterious shit :)
+                if(typeof value === "function" && BareaHelper.ARRAY_FUNCTIONS.includes(value.name))
+                    this.#computedPropertiesDependencyTracker.track(newPath, value.name);
+                else
+                    this.#computedPropertiesDependencyTracker.track(newPath, null);
+
+              
                 
                
                 if (typeof value === 'object' && value !== null) 
@@ -336,8 +360,7 @@ class BareaApp
                                                 this.#appDataProxyCache.set(t, proxyargobj);
                                         }else{
                                             proxyargobj=t;
-                                        }
-                                        
+                                        }                                 
 
                                         proxyargs.push(proxyargobj);
                                     });
