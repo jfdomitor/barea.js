@@ -154,7 +154,7 @@ Consider a template where each item conditionally displays data using a computed
 </div>
 ```
 If root.edit is used in every template item, the function or expression linked to it will evaluate 1,000 times—once for each row, but will only execute the getter the computed propery the first time.
-* Computed properties: Only changes to data will trigger a dependent computed property. An array function cannot be the trigger. This is by design. Never edit data inside a computed property, if you're not very fond of infinity loops. 
+* Computed properties: Only changes to data will trigger a dependent computed property. An array function cannot be the trigger. This is by design. Alos rememeber to never edit data inside a computed property, if you're not very fond of infinity loops. 
 Example:
 ```
 Works fine, nothing edited here
@@ -164,7 +164,7 @@ fullName: function()
   return model.firstName + '  ' + model.lastName;
 }
 
-Infinity loop might happen since fullName is dependent on firstName and lastName and becomes dirty every time one of them changes.
+An infinity loop might occur since fullName is dependent on firstName (and lastName) and becomes dirty every time one of them changes.
 If there's a directive connected to fullName it will be notified to update every time fullName get's dirty.
 1. fullName gets dirty, 2. directive is notified, directive calls the value 3. fullName is recomputed and since there's an edit of a dependency inside we start over on 1 again.
 fullName: function()
