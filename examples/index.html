@@ -23,30 +23,22 @@
                 clear: both;
             }
             .box {
-                width: 30%; /* Each div takes half the width */
+                /*width: 30%; /* Each div takes half the width */
                 padding: 20px;
                 text-align: left;
-                border: 1px solid black;
+                /* border: 1px solid black; */
                 height: 900px;
                 overflow-y: auto;
                 margin-top: 10px;
                 font-size: 14px; 
             }
-            .box2 {
-                width: 70%; /* Each div takes half the width */
-                padding: 20px;
-                /*background-color: lightblue;*/
-                text-align: left;
+            .demobox {
                 border: 1px solid black;
+                min-width: 400px;
+                padding: 5px;
+                margin: 5px;
                 overflow-y: auto;
-                height: 900px;
-                margin-top: 10px;
-            }
-            .infobox {
-                padding: 15px;
-                background-color: lightgray;
-                text-align: left;
-                border: 1px solid black;
+                
             }
             .redbg {  background-color: red;}
             .bluebg {  background-color: lightblue;}
@@ -82,14 +74,13 @@
             .beautiful-btn {
                 background: linear-gradient(135deg, #8e929f, #3f334d);
                 color: white;
-                padding: 12px 20px;
-                font-size: 18px;
+                padding: 5px;
+                font-size: 14px;
                 font-weight: bold;
                 border: none;
                 border-radius: 25px;
                 cursor: pointer;
                 transition: all 0.3s ease;
-                text-transform: uppercase;
                 letter-spacing: 1px;
                 box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.2);
                 outline: none;
@@ -104,189 +95,88 @@
 
     <div id="app" class="ba-cloak">
 
-        <img ba-src="root.model.image" />
-        <h1 style="float: left; margin-left: 20px;">barea.js</h1>
+        <img ba-src="root.image" />
+        <h1 style="float: left; margin-left: 20px;">barea.js, this page is demo page of common functions in barea.js</h1>
 
         <div class="container">
-           
-            <div class="box">   
-                <p>{{root.description}}</p>
-                <p><b>What about it</b></p>
-                <div>
-                    <ul>
-                        <li>Using proxies to react on data changes, like vue3</li>
-                        <li>Super light, less than 50Kb unminified</li>
-                        <li>Fast</li>
-                        <li>No dependencies to other libs</li>
-                        <li>
-                            Directive: ba-bind
-                            <div class="infobox">
-                                <b>&lt;input type="text" ba-bind="root.model.user.firstname"&gt;</b><br />
-                                <i>Bind ui controls to a single value in the model</i>
-                            </div>
-                        </li>
-                        <li>
-                            Directive: ba-bind-handler
-                            <div class="infobox">
-                               <b>&lt;input type="text" ba-bind="root.model.somedata" ba-bind-handler="someDataHandler('args if you like')"&gt;</b>
-                               <i>Override binding logic for complex ui controls, by implementing a function that updates data/ui when the bound value changes.</i>
-                            </div>
-                        </li>
-                        <li>
-                            Directive: ba-click
-                            <div class="infobox">
-                                <b>&lt;button ba-click="saveMyData('arg1','arg2','arg3')" ba-path="root.model"&gt;</b><br />
-                                <i>Run functions</i>
-                            </div>
-                        <li>
-                            Directive: ba-foreach
-                            <div class="infobox">
-                                <b>
-                                &lt;tr ba-foreach="show in root.model.shows"&gt;<br />
-                                    <span style="margin-left: 10px;">&lt;td&gt;&lt;input type="text" ba-bind="show.Note"&gt;&lt;/td&gt;</span><br />
-                                &lt;/tr&gt;
-                                </b><br />
-                                <i>A template directive to create new html based on an array or computed function in your model, works only on arrays</i>
-                             </div>
-                        </li>
-                        <li>
-                            Directive: ba-class
-                            <div ba-class="root.settings.myDivClasses">
-                                <b>&lt;div ba-class="root.settings.myDivClasses" &gt;&lt;/div&gt;</b><br/>
-                                <i>Set class names in your data and have them reflected in the dom. Example: use ba-click to update some classes</i>
-                                <br />
-                                <br />
-                                <button class="beautiful-btn" ba-click="tryClassHandler('arg1','arg2',true,777)">Try ba-class</button>
-                            </div>
-                        </li>
-                        <li>
-                            Directive: ba-class-if
-                            <div class="infobox" ba-class-if="root.edit?redbg">
-                                <b>&lt;div ba-class-if="root.edit?classname1,classname2" &gt;&lt;/div&gt;</b><br/>
-                                <i>Add / Remove class names based on an expression or the result of an handler</i>
-                                <br />
-                                <br />
-                                <button class="beautiful-btn" ba-click="editHandler()">Try ba-class-if</button>
-                            </div>
-                        </li>
-                        <li>Directive: ba-hide
-                            <div class="infobox">
-                                <b>&lt;p ba-hide="root.model.somevalue" &gt;&lt;/p&gt;</b> <br />
-                                <i>Show / Hide an element based on an expression</i>
-                                <br />
-                                <br />
-                                <b>&lt;div ba-hide="computedProperty" &gt;&lt;/div&gt;</b>
-                                <i>Show / Hide an element based on a computed property called when ever the model changes</i>
-                        </li>
-                        <li>Directive: ba-show
-                            <div class="infobox">
-                                <b>&lt;p ba-show="root.model.somevalue" &gt;&lt;/p&gt;</b> <br />
-                                <i>Show / Hide an element  based on an expression</i>
-                                <br />
-                                <br />
-                                <b>&lt;div ba-show="computedProperty" &gt;&lt;/div&gt;</b>
-                                <i>Show / Hide an element based on a computed property called when ever the model changes</i>
-                            </div>
-                        </li>
 
-                        <li>Directive: ba-if
-                            <div class="infobox">
-                                <b>&lt;p ba-if="root.showText" &gt;&lt;/p&gt;</b> <br />
-                                <i>Add / Remove elements based on an expression</i>
-                                <br />
-                                <br />
-                                <b>&lt;div ba-if="canShowText" &gt;&lt;/div&gt;</b>
-                                <i>Add / Remove elements based on a computed function</i>
-                                <br />
-                                <br />
-                                <button class="beautiful-btn" ba-click="tryIfHandler()">Try ba-if</button>
-                                <p ba-if="canShowText">Add / Remove this text by a computed function</p>
-                            </div>
-                         </li>
-                        <li>Directive: ba-src
-                            <div class="infobox"><i>Show images based on urls in your model</i></div>
-                        </li>
-                        <li>Directive: ba-path
-                            <div class="infobox"><i>Use this together with handlers (ba-if, ba-show etc..) to have data at a certain path sent as an event parameter</i></div>
-                        </li>
-                        <li>Directive: ba-href
-                            <div class="infobox">
-                                <i>
-                                    Use this to set the href attribute from your data <br />
-                                    <a ba-href="root.linkToNPM">A link from data</a>
-                                 </i>
-                            </div>
-                        </li>
-                        <li>Check out the source of this page, all features are used on it.</li>
-                    </ul>
-                </div> 
-            </div>
+            <div class="box">
+                <div class="demobox">
+                    <h4>Input and Interpolation (type to test) - ba-bind, ba-bind-blur</h4>
+                    <input type="text" ba-bind="root.interpolatedvalue"  />
+                    <p>{{root.interpolatedvalue}}</p>
+                </div>
+                <div class="demobox" ba-class-if="root.changeclass?bluebg">
+                    <h4>Change classes based on a condition - ba-class-if</h4>
+                    <input type="checkbox" ba-bind="root.changeclass"  />
+                </div>
+                <div class="demobox">
+                    <h4>Hide and show - ba-show, ba-hide</h4>
+                    <p ba-show="root.hideandshow">Now you see something else !</p>
+                    <p ba-hide="root.hideandshow">Now you see me !</p>
+                    <input type="checkbox" ba-bind="root.hideandshow"  />
+                </div>
+                <div class="demobox">
+                    <h4>Remove from dom - ba-if</h4>
+                    <p ba-if="!root.checktoremove">Check to remove me !</p>
+                    <input type="checkbox" ba-bind="root.checktoremove"  />
+                </div>
+                <div class="demobox">
+                    <h4>Run something - ba-click</h4>
+                    <button class="beautiful-btn" ba-click="runSomething()">Run</button>
+                </div>
+                <div class="demobox">
+                    <h4>Computed Interpolation</h4>
+                    <p>I just computed this fake authour name: <b>{{fullName}}</b></p>
+                </div>
 
-            <div class="box2">
-                    <h1>{{root.model.description}}, count: {{showCount}} </h1>
-                    <input type="text" ba-bind="root.model.description"  />
-                    <br />
-                    <br />
-                    <button class="beautiful-btn" ba-click="editHandler('Editing...')" ba-path="root.model">Edit Notes</button>
-                    <button class="beautiful-btn" ba-click="showMoreRamones('Hey ho lets go')">Show 50 more shows</button>
+              </div>
+
+
+              <div class="box" style="min-width: 900px;">
+                <div class="demobox">
+                    <h4>Arrays and stuff. An array bound with - ba-foreach</h4>
+                    <button class="beautiful-btn" ba-click="showMoreRamones()">Load some more</button>
                     <button class="beautiful-btn" ba-click="deleteMarkedLines()">Delete marked lines</button>
-                    <br />
-                    <br />
                     <button class="beautiful-btn" ba-click="arrayOperation('unshift')">Unshift</button>
                     <button class="beautiful-btn" ba-click="arrayOperation('push')">Push</button>
                     <button class="beautiful-btn" ba-click="arrayOperation('pop')">Pop</button>
-                    <button class="beautiful-btn" ba-click="arrayOperation('shift')">Shift</button>
-                    <button class="beautiful-btn" ba-click="arrayOperation('splice')">Splice</button>
-                    <button class="beautiful-btn" ba-click="arrayOperation('reverse')">Reverse</button>
-                    <button class="beautiful-btn" ba-click="arrayOperation('sort')">Sort</button>
                     <br />
+                    <hr>
+                    <p>Line count: {{showCount}}</p>
+                    <hr>
                     <table>
                         <thead>
                             <tr>
+                                <td width="5%"><b>Edit</b></td>
                                 <td width="5%"><b>Index</b></td>
                                 <td width="20%"><b>Date</b></td>
-                                <td width="20%"><span ba-hide="root.edit" ba-click="sortList()"><b>Note (Click to sort)</b></span><span ba-show="root.edit"><b>Note</b></span></td>
+                                <td width="20%"><span ba-click="sortList()"><b>Note (Click to sort)</b></span></td>
                                 <td width="20%"><b>Rate</b></td>
                                 <td></td>
                             </tr>
                         </thead>
                         <tbody>
-                            <!--
-                              <tr ba-foreach="show in root.model.shows">
-                                <td ba-class-if="show.marked?bluebg">
-                                    <span ba-hide="root.edit">{{index}}</span>
-                                    <span ba-show="root.edit"><input type="checkbox" ba-bind="show.marked" /></span>
-                                </td>
-                                <td ba-class-if="root.edit&&show.marked?redbg">{{show.Date}}</td>
+                           
+                            <tr ba-foreach="show in root.ramonesShows">
                                 <td>
-                                    <span ba-show="!root.edit">{{show.Note}}</span>
-                                    <span ba-show="root.edit"><input type="text" ba-bind-blur="show.Note" /></span>
+                                    <input type="checkbox" ba-bind="show.marked" />
                                 </td>
-                                <td id="ratecol"></td>
-                                <td>{{show}}</td>
-                            </tr>
-                            -->
-                            <tr ba-foreach="show in root.model.shows">
-                                <td ba-class-if="show.marked?bluebg">
-                                    <span ba-show="!root.edit">{{show.index}}</span>
-                                    <span ba-show="lineShowEdit"><input type="checkbox" ba-bind="show.marked" /></span>
+                                <td>
+                                    {{show.index}}
                                 </td>
                                 <td>{{show.Date}}</td>
                                 <td>
-                                    <span><input type="text" ba-bind-blur="show.Note" /></span>
+                                    <span ba-hide="show.marked">{{show.Note}}</span>
+                                    <span ba-show="show.marked"><input type="text" ba-bind="show.Note" /></span>
                                 </td>
                                 <td id="ratecol"></td>
-                                <td>{{show}}</td>
                             </tr>
 
                         </tbody>
                     </table>
-
-                    <br />
-                    
-                  
-            </div>
-
+                </div>
+              </div>
         </div>
     </div>
        
@@ -314,18 +204,23 @@
         //bareaapp.enableConsoleLog(4, true);
         //bareaapp.enableConsoleLog(5, true);
 
-        //Turn off interpolation for speed
-        //bareaapp.enableInterpolation(false);
-
          //Hide the app element before the dom is fully loaded
          bareaapp.enableHideBeforeLoaded(true);
 
          const appcontent = {
             data: {
-                edit:false,isModified:false, showText:true, linkToNPM:"https://www.npmjs.com", createdByFirstName:"Johan", createdByLastName:"Filipsson", 
-                sortOrder: 1, addMoreCount:10,
-                description: "barea.js (Basic Reactivity) is a small reactive java script, it can be use to list Ramones shows and hopefully other things :)",
-                model: { description: "List of Ramones shows", shows:[{Date:"1978-01-01", Note:"Test"}], image:"../examples/stone.png"}, settings:{ myDivClasses: "infobox" }
+                interpolatedvalue:"Hello !", 
+                changeclass:false, 
+                hideandshow:false,
+                checktoremove:false,
+                firstName:"Johnny", 
+                lastName:"Barea",
+                ramonesShows:[],
+                addMoreCount:15, 
+                linkToNPM:"https://www.npmjs.com",
+                image:"stone.png",
+                faketrigger:false
+                
             },
             methods:{
 
@@ -333,44 +228,53 @@
                 //when we use ba-bind and ba-bind-handler, then the handler is called instead of setting data/ui so yo can manage it your way
                 //See ratingcomponent.js
                 rateHandler: getRatingHandler,
-                editHandler: function(event, arg1, arg2, arg3, arg4, arg5, arg6)
-                {
-                    //ba-click handler for the edit button
-                    //Available parameters: event, element, data, this = bareaapp
-                    this.getData().edit = !this.getData().edit;
-                },
-                tryClassHandler: function(event,arg1, arg2, arg3, arg4, arg5, arg6) 
-                {
-                    //ba-click handler to demonstrate ba-class
-                    //Available parameters: event, element, data, this = bareaapp
-                    if (this.getData().settings.myDivClasses !== "infobox,redbg")
-                        this.getData().settings.myDivClasses = "infobox,redbg";
-                    else
-                        this.getData().settings.myDivClasses = "infobox,bluebg";
-                },
-                tryIfHandler: function(event,arg1, arg2, arg3, arg4, arg5, arg6) 
-                {
-                    //ba-click handler to demonstrate ba-if
-                    //Available parameters: event, element, data, this = bareaapp
-                    this.getData().showText = !this.getData().showText;
-                },
                 showMoreRamones: function(event,element,data,arg1, arg2, arg3, arg4, arg5) 
                 {
                     //ba-click handler to show more data
                     //Available parameters: event, element, data, this = bareaapp
-                    this.getData().addMoreCount+=50;
-                    this.getData().model.shows = getRamonesShows().slice((this.getData().addMoreCount-50),this.getData().addMoreCount);
-                    //element.disabled=true;
+                    let the_full_proxy = this.getData();
+                    the_full_proxy.addMoreCount+=50;
+                    the_full_proxy.ramonesShows = getRamonesShows().slice((this.getData().addMoreCount-50),this.getData().addMoreCount);
+                },
+                deleteMarkedLines: function() 
+                {
+                    let current_array = this.getData().ramonesShows.filter(p=> !p.marked);
+                    this.getData().ramonesShows = current_array;
+
+                },
+                sortList: function() 
+                {
+                    let data = this.getData();
+                    if (data.sortOrder === 1)
+                       data.sortOrder=-1
+                    else 
+                        data.sortOrder=1;
+
+                    data.ramonesShows.sort((a, b) => {
+                        let valA = a['Note'] || "";
+                        let valB = b['Note'] || "";
+
+                        if (valA < valB) return -1 *  data.sortOrder;
+                        if (valA > valB) return 1 *  data.sortOrder;
+
+                        return 0;
+                    });
+
+                },
+                runSomething: function(event, arg1, arg2, arg3, arg4, arg5, arg6)
+                {
+                   alert('Thanks for the run !');
                 },
                 arrayOperation: function(event,element,data,funcname) 
                 {
-                    let current_array = this.getData().model.shows;
+
+                    let current_array = data.ramonesShows;
                     if (funcname==='unshift')
-                        current_array.unshift({Date:'1973-04-17', Note:'Test'});
+                        current_array.unshift({Date:'1975-01-01', Note:'A new line'});
                     if (funcname==='pop')
                         current_array.pop();
                     if (funcname==='push')
-                        current_array.push({Date:'1973-04-17', Note:'Test'});
+                        current_array.push({Date:'1975-01-01', Note:'Test'});
                     if (funcname==='shift')
                         current_array.shift();
                     if (funcname==='reverse')
@@ -380,69 +284,29 @@
                     if (funcname==='sort')
                         current_array.sort((a,b)=>a.Rating-b.Rating);
 
-                    this.getData().isModified =   !this.getData().isModified;
-        
-                },
-                deleteMarkedLines: function() 
-                {
-                    let current_array = this.getData().model.shows.filter(p=> !p.marked);
-                    this.getData().model.shows = current_array;
-
-                },
-                sortList: function() 
-                {
-                   if (this.getData().sortOrder === 1)
-                        this.getData().sortOrder=-1
-                    else 
-                        this.getData().sortOrder=1;
+                    //Since barea computed properties does not track array functions
+                    //We use this to say that something happened
+                    data.faketrigger = !data.faketrigger;
 
                 }
             },
             computed:{
 
-                sortedShows:function()
+                fullName: function()
                 {
-
-                    let modified = this.getData().isModified;
-                    let modifier = this.getData().sortOrder;
-                    //let data = this.getData().model.shows.slice(); //Works best, copies the proxied array
-                    let data = this.getData().model.shows; //Works halways gets the proxied array
-                    //let data = [...this.getData().model.shows]; //Returns a new non-reactive array, don't use this if not intended
-            
-                    data.sort((a, b) => {
-                        let valA = a['Note'] || "";
-                        let valB = b['Note'] || "";
-
-                        if (valA < valB) return -1 * modifier;
-                        if (valA > valB) return 1 * modifier;
-
-                        return 0;
-                    });
-
-                    return data;
-                                
-                },
-                createdByFullName: function()
-                {
-                    return this.getData().createdByFirstName + ' - ' + this.getData().createdByLastName;
-                },
-                canShowText: function()
-                {
-                    return this.getData().showText;
+                    return this.getData().firstName + ' ' + this.getData().lastName;
                 },
                 showCount: function()
                 {
-                    return this.getData().model.shows.length;
-                },
-                lineShowEdit: function()
-                {
-                    return this.getData().edit;
+                    let data = this.getData();
+                    let trigger = data.faketrigger; //showCount will now be dependent of data.faketrigger, we can use that to edit faketrigger to recompute
+                    return data.ramonesShows.length;
                 }
-
+              
             },
             mounted: function(data) 
             {
-                data.model.shows = getRamonesShows().slice(0,this.getData().addMoreCount);
+                data.ramonesShows = getRamonesShows().slice(0,this.getData().addMoreCount);
             }
          };
 
