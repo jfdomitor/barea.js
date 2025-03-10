@@ -266,7 +266,7 @@
                                 <td>{{show}}</td>
                             </tr>
                             -->
-                            <tr ba-foreach="show in sortedShows">
+                            <tr ba-foreach="show in root.model.shows">
                                 <td ba-class-if="show.marked?bluebg">
                                     <span ba-show="!root.edit">{{show.index}}</span>
                                     <span ba-show="lineShowEdit"><input type="checkbox" ba-bind="show.marked" /></span>
@@ -322,7 +322,7 @@
 
          const appcontent = {
             data: {
-                edit:false, showText:true, linkToNPM:"https://www.npmjs.com", createdByFirstName:"Johan", createdByLastName:"Filipsson", 
+                edit:false,isModified:false, showText:true, linkToNPM:"https://www.npmjs.com", createdByFirstName:"Johan", createdByLastName:"Filipsson", 
                 sortOrder: 1, addMoreCount:10,
                 description: "barea.js (Basic Reactivity) is a small reactive java script, it can be use to list Ramones shows and hopefully other things :)",
                 model: { description: "List of Ramones shows", shows:[{Date:"1978-01-01", Note:"Test"}], image:"../examples/stone.png"}, settings:{ myDivClasses: "infobox" }
@@ -379,6 +379,8 @@
                         current_array.splice(3,3);
                     if (funcname==='sort')
                         current_array.sort((a,b)=>a.Rating-b.Rating);
+
+                    this.getData().isModified =   !this.getData().isModified;
         
                 },
                 deleteMarkedLines: function() 
@@ -400,14 +402,12 @@
 
                 sortedShows:function()
                 {
-        
-                    //This is used as a source for template rendering, very hard to understand
-                    //Very sensitive 
 
+                    let modified = this.getData().isModified;
                     let modifier = this.getData().sortOrder;
-                    //let data = this.getData().model.shows.slice(); //Works best
-                    let data = this.getData().model.shows; //Works halways gets the proxied array, but sorting wont work, why ?
-                    //let data = [...this.getData().model.shows]; //Doesn't work, returns a new unproxied array, that is rendered, but then unshift etc does not render
+                    //let data = this.getData().model.shows.slice(); //Works best, copies the proxied array
+                    let data = this.getData().model.shows; //Works halways gets the proxied array
+                    //let data = [...this.getData().model.shows]; //Returns a new non-reactive array, don't use this if not intended
             
                     data.sort((a, b) => {
                         let valA = a['Note'] || "";

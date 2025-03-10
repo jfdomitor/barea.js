@@ -27,7 +27,6 @@ class BareaApp
     #methods = {};
     #consoleLogs = [];
     #mountStarted=false;
-    #mountFinnished=false;
     #mountedHandler=null;
     #computedProperties = {};
     #enableBareaId = false;
@@ -161,9 +160,6 @@ class BareaApp
         {  
             this.#mountedHandler.apply(this, [this.#appDataProxy]);
         }
-   
-        //Important in dependency tracking
-        this.#mountFinnished=false;
 
         return this.#appDataProxy;
     }
@@ -276,11 +272,12 @@ class BareaApp
 
                 let value = Reflect.get(target, key, receiver);
 
+                //Special to support the spread operator ...
                 if (key === Symbol.iterator) {
                     return (function* () {
-                        let index = 0; // Track index for correct paths
+                        let index = 0; 
                         for (let item of target) {
-                            let itemPath = `${currentpath}[${index++}]`; // Unique path per item
+                            let itemPath = `${currentpath}[${index++}]`; 
                 
                             if (typeof item === 'object' && item !== null) {
                                 if (this.#appDataProxyCache.has(item)) {
@@ -297,28 +294,10 @@ class BareaApp
                     }).bind(this);
                 }
                 
-
-                if (Array.isArray(target))
-                {
-                    //These won't be detected otherwise
-                    BareaHelper.ARRAY_FUNCTIONS.forEach(f=>{ 
-                    if (f.includes('sort','reverse')) //Leads to infinity loop otherwise if sort is used inside a computed function
-                        return;
-                            
-                        this.#computedPropertiesDependencyTracker.track(currentpath, f);
-                    });
-                }
-
                 const newPath = Array.isArray(target) ? `${currentpath}[${key}]` : `${currentpath}.${key}`;
               
-                //Automatic dependency tracking, mysterious shit :)
-                if(typeof value === "function" && BareaHelper.ARRAY_FUNCTIONS.includes(value.name))
-                    this.#computedPropertiesDependencyTracker.track(newPath, value.name);
-                else
+                if(typeof value !== "function")
                     this.#computedPropertiesDependencyTracker.track(newPath, null);
-
-              
-                
                
                 if (typeof value === 'object' && value !== null) 
                 {
@@ -340,45 +319,35 @@ class BareaApp
 
                     if(typeof value === "function")
                     {
-                        if (BareaHelper.ARRAY_FUNCTIONS.includes(value.name)) 
-                        {
-                            if (!this.bareaWrappedMethods) {
-                                this.bareaWrappedMethods = new Map();
-                            }
-                            let funckey = currentpath+'_'+value.name;
-                            if (!this.bareaWrappedMethods.has(funckey)) {
-                                this.bareaWrappedMethods.set(funckey, (...args) => 
-                                {
-
-                                    let proxyargs =[];
-                                    args.forEach(t=>
-                                    {
-                                        let proxyargobj = null;
-                                        if (typeof t === "object"){
-                                            proxyargobj = this.#createReactiveProxy(callback, t);
-                                            if (!this.#appDataProxyCache.has(t)) 
-                                                this.#appDataProxyCache.set(t, proxyargobj);
-                                        }else{
-                                            proxyargobj=t;
-                                        }                                 
-
-                                        proxyargs.push(proxyargobj);
-                                    });
-                                
-                
-                                    const result = value.apply(target, args); 
-
-                                    this.#computedPropertiesDependencyTracker.notify(currentpath, value.name);
-
-                                    callback(currentpath, receiver, '', proxyargs, value.name);
-
-                                    return result;
-                                });
-                            }
+                        if (BareaHelper.ARRAY_FUNCTIONS.includes(value.name)) {
+                            this.#internalSystemCounter++; // Increment the counter
                         
-                            return this.bareaWrappedMethods.get(funckey);
-
-                        }    
+                            // Directly create the wrapped function without caching
+                            return (...args) => {
+                                let proxyargs = [];
+                                args.forEach(t => {
+                                    let proxyargobj = null;
+                                    if (typeof t === "object") {
+                                        proxyargobj = this.#createReactiveProxy(callback, t);
+                                        if (!this.#appDataProxyCache.has(t)) 
+                                            this.#appDataProxyCache.set(t, proxyargobj);
+                                    } else {
+                                        proxyargobj = t;
+                                    }
+                        
+                                    proxyargs.push(proxyargobj);
+                                });
+                        
+                                const result = value.apply(target, args);
+                        
+                                this.#computedPropertiesDependencyTracker.notify(currentpath, value.name);
+                        
+                                callback(currentpath, receiver, '', proxyargs, value.name);
+                        
+                                return result;
+                            };
+                        }
+                        
         
                     }
                 }

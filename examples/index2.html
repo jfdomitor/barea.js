@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>barea.js</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; padding: 20px; }
+            img {
+                width: 100px; /* Adjust size */
+                height: 100px;
+                border-radius: 50%;
+                float: left;
+                align-self: center;
+            }
+            .ba-cloak {
+                visibility: hidden;
+            }
+            .container {
+                display: flex; /* Enables flexbox */
+                gap: 10px; /* Adds space between divs */
+                font-size: 18px;  
+                clear: both;
+            }
+            .box {
+                /*width: 30%; /* Each div takes half the width */
+                padding: 20px;
+                text-align: left;
+                /* border: 1px solid black; */
+                height: 900px;
+                overflow-y: auto;
+                margin-top: 10px;
+                font-size: 14px; 
+            }
+            .demobox {
+                border: 1px solid black;
+                min-width: 400px;
+                padding: 5px;
+                margin: 5px;
+                overflow-y: auto;
+                
+            }
+            .redbg {  background-color: red;}
+            .bluebg {  background-color: lightblue;}
+            li { padding: 10px;}
+            .star-rating {
+                display: flex;
+                flex-direction: row;
+                gap: 10px; /* Space between stars */
+            }
+
+            .star-rating input {
+               display: none; /* Hide checkboxes */
+            }
+
+            .star-rating label {
+                font-size: 2rem; /* Size of stars */
+                cursor: pointer;
+                transition: color 0.3s;
+            }
+
+            /* Default star (unchecked) */
+                .star-rating input + label::before {
+                content: "☆";
+                color: #999; /* Gray color */
+            }
+
+            /* Checked star (filled) */
+                .star-rating input:checked + label::before {
+                content: "★";
+                color: gold; /* Gold color for checked stars */
+            }
+
+            .beautiful-btn {
+                background: linear-gradient(135deg, #8e929f, #3f334d);
+                color: white;
+                padding: 5px;
+                font-size: 14px;
+                font-weight: bold;
+                border: none;
+                border-radius: 25px;
+                cursor: pointer;
+                transition: all 0.3s ease;
+                letter-spacing: 1px;
+                box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.2);
+                outline: none;
+                display: inline-block;
+            }
+
+           
+    </style>
+</head>
+<body>
+
+
+    <div id="app" class="ba-cloak">
+
+        <img ba-src="root.image" />
+        <h1 style="float: left; margin-left: 20px;">barea.js, this page is demo page of common functions in barea.js</h1>
+
+        <div class="container">
+
+            <div class="box">
+                <div class="demobox">
+                    <h4>Input and Interpolation (type to test) - ba-bind, ba-bind-blur</h4>
+                    <input type="text" ba-bind="root.interpolatedvalue"  />
+                    <p>{{root.interpolatedvalue}}</p>
+                </div>
+                <div class="demobox" ba-class-if="root.changeclass?bluebg">
+                    <h4>Change classes based on a condition - ba-class-if</h4>
+                    <input type="checkbox" ba-bind="root.changeclass"  />
+                </div>
+                <div class="demobox">
+                    <h4>Hide and show - ba-show, ba-hide</h4>
+                    <p ba-show="root.hideandshow">Now you see something else !</p>
+                    <p ba-hide="root.hideandshow">Now you see me !</p>
+                    <input type="checkbox" ba-bind="root.hideandshow"  />
+                </div>
+                <div class="demobox">
+                    <h4>Remove from dom - ba-if</h4>
+                    <p ba-if="!root.checktoremove">Check to remove me !</p>
+                    <input type="checkbox" ba-bind="root.checktoremove"  />
+                </div>
+                <div class="demobox">
+                    <h4>Run something - ba-click</h4>
+                    <button class="beautiful-btn" ba-click="runSomething()">Run</button>
+                </div>
+                <div class="demobox">
+                    <h4>Computed Interpolation</h4>
+                    <p>I just computed this fake authour name: <b>{{fullName}}</b></p>
+                </div>
+
+              </div>
+
+
+              <div class="box" style="min-width: 900px;">
+                <div class="demobox">
+                    <h4>Arrays and stuff. An array bound with - ba-foreach</h4>
+                    <button class="beautiful-btn" ba-click="showMoreRamones()">Load some more</button>
+                    <button class="beautiful-btn" ba-click="deleteMarkedLines()">Delete marked lines</button>
+                    <button class="beautiful-btn" ba-click="arrayOperation('unshift')">Unshift</button>
+                    <button class="beautiful-btn" ba-click="arrayOperation('push')">Push</button>
+                    <button class="beautiful-btn" ba-click="arrayOperation('pop')">Pop</button>
+                    <br />
+                    <hr>
+                    <p>Line count: {{showCount}}</p>
+                    <hr>
+                    <table>
+                        <thead>
+                            <tr>
+                                <td width="5%"><b>Edit</b></td>
+                                <td width="5%"><b>Index</b></td>
+                                <td width="20%"><b>Date</b></td>
+                                <td width="20%"><span ba-click="sortList()"><b>Note (Click to sort)</b></span></td>
+                                <td width="20%"><b>Rate</b></td>
+                                <td></td>
+                            </tr>
+                        </thead>
+                        <tbody>
+                           
+                            <tr ba-foreach="show in root.ramonesShows">
+                                <td>
+                                    <input type="checkbox" ba-bind="show.marked" />
+                                </td>
+                                <td>
+                                    {{show.index}}
+                                </td>
+                                <td>{{show.Date}}</td>
+                                <td>
+                                    <span ba-hide="show.marked">{{show.Note}}</span>
+                                    <span ba-show="show.marked"><input type="text" ba-bind="show.Note" /></span>
+                                </td>
+                                <td id="ratecol"></td>
+                            </tr>
+
+                        </tbody>
+                    </table>
+                </div>
+              </div>
+        </div>
+    </div>
+       
+    <script src="../barea.js"></script>
+    <script src="../examples/ratingcomponent.js"></script>
+    <script src="../examples/ramonesshows.js"></script>
+    <script>
+
+
+        //Set the rating component in the ba-foreach template
+        //Just an example of reusable markup in a separate file
+        //See ratingcomponent.js
+        const ratingcolumn = document.getElementById("ratecol");
+        ratingcolumn.innerHTML = getRatingBar('show.Rating','rateHandler()');
+
+        //Create the barea.js app 
+        //Available paramteter: enableInternalId = let barea assign a unique id (baId) to each object
+        const bareaapp = getBareaApp(false);
+
+        //Some logs are available if needed
+        //bareaapp.printConsoleLogs();
+        //bareaapp.enableConsoleLog(1, true);
+        //bareaapp.enableConsoleLog(2, true);
+        //bareaapp.enableConsoleLog(3, true);
+        //bareaapp.enableConsoleLog(4, true);
+        //bareaapp.enableConsoleLog(5, true);
+
+         //Hide the app element before the dom is fully loaded
+         bareaapp.enableHideBeforeLoaded(true);
+
+         const appcontent = {
+            data: {
+                interpolatedvalue:"Hello !", 
+                changeclass:false, 
+                hideandshow:false,
+                checktoremove:false,
+                firstName:"Johnny", 
+                lastName:"Barea",
+                ramonesShows:[],
+                addMoreCount:15, 
+                linkToNPM:"https://www.npmjs.com",
+                image:"stone.png",
+                faketrigger:false
+                
+            },
+            methods:{
+
+                //Custom binding handler for complex controls (the rating bar) in this example
+                //when we use ba-bind and ba-bind-handler, then the handler is called instead of setting data/ui so yo can manage it your way
+                //See ratingcomponent.js
+                rateHandler: getRatingHandler,
+                showMoreRamones: function(event,element,data,arg1, arg2, arg3, arg4, arg5) 
+                {
+                    //ba-click handler to show more data
+                    //Available parameters: event, element, data, this = bareaapp
+                    let the_full_proxy = this.getData();
+                    the_full_proxy.addMoreCount+=50;
+                    the_full_proxy.ramonesShows = getRamonesShows().slice((this.getData().addMoreCount-50),this.getData().addMoreCount);
+                },
+                deleteMarkedLines: function() 
+                {
+                    let current_array = this.getData().ramonesShows.filter(p=> !p.marked);
+                    this.getData().ramonesShows = current_array;
+
+                },
+                sortList: function() 
+                {
+                    let data = this.getData();
+                    if (data.sortOrder === 1)
+                       data.sortOrder=-1
+                    else 
+                        data.sortOrder=1;
+
+                    data.ramonesShows.sort((a, b) => {
+                        let valA = a['Note'] || "";
+                        let valB = b['Note'] || "";
+
+                        if (valA < valB) return -1 *  data.sortOrder;
+                        if (valA > valB) return 1 *  data.sortOrder;
+
+                        return 0;
+                    });
+
+                },
+                runSomething: function(event, arg1, arg2, arg3, arg4, arg5, arg6)
+                {
+                   alert('Thanks for the run !');
+                },
+                arrayOperation: function(event,element,data,funcname) 
+                {
+
+                    let current_array = data.ramonesShows;
+                    if (funcname==='unshift')
+                        current_array.unshift({Date:'1975-01-01', Note:'A new line'});
+                    if (funcname==='pop')
+                        current_array.pop();
+                    if (funcname==='push')
+                        current_array.push({Date:'1975-01-01', Note:'Test'});
+                    if (funcname==='shift')
+                        current_array.shift();
+                    if (funcname==='reverse')
+                        current_array.reverse();
+                    if (funcname==='splice')
+                        current_array.splice(3,3);
+                    if (funcname==='sort')
+                        current_array.sort((a,b)=>a.Rating-b.Rating);
+
+                    //Since barea computed properties does not track array functions
+                    //We use this to say that something happened
+                    data.faketrigger = !data.faketrigger;
+
+                }
+            },
+            computed:{
+
+                fullName: function()
+                {
+                    return this.getData().firstName + ' ' + this.getData().lastName;
+                },
+                showCount: function()
+                {
+                    let data = this.getData();
+                    let trigger = data.faketrigger; //showCount will now be dependent of data.faketrigger, we can use that to edit faketrigger to recompute
+                    return data.ramonesShows.length;
+                }
+              
+            },
+            mounted: function(data) 
+            {
+                data.ramonesShows = getRamonesShows().slice(0,this.getData().addMoreCount);
+            }
+         };
+
+         bareaapp.mount("app",appcontent);
+
+        
+    </script>
+
+</body>
+</html>
