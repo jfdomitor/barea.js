@@ -184,11 +184,12 @@
 
     </div>
        
-    <script src="../barea.js"></script>
-    <script src="../examples/ratingcomponent.js"></script>
-    <script src="../examples/ramonesshows.js"></script>
-    <script>
+   
+    <script src="../plain/ratingcomponent.js"></script>
+    <script src="../plain/ramonesshows.js"></script>
+    <script type="module">
 
+        import {BareaApp,BareaHelper} from "../../barea.js";
 
         //Set the rating component in the ba-foreach template
         //Just an example of reusable markup in a separate file
@@ -198,15 +199,11 @@
 
         //Create the barea.js app 
         //Available paramteter: enableInternalId = let barea assign a unique id (baId) to each object
-        const bareaapp = getBareaApp(false);
+        const bareaapp = new BareaApp();
 
         //Some logs are available if needed
-        //bareaapp.printConsoleLogs();
-        //bareaapp.enableConsoleLog(1, true);
-        //bareaapp.enableConsoleLog(2, true);
-        //bareaapp.enableConsoleLog(3, true);
-        //bareaapp.enableConsoleLog(4, true);
-        //bareaapp.enableConsoleLog(5, true);
+        //BareaHelper.printDebugLogs();
+        //BareaHelper.enableDebugLog(10);
 
          //Hide the app element before the dom is fully loaded
          bareaapp.enableHideBeforeLoaded(true);
