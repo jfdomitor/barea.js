@@ -23,35 +23,44 @@ npm install barea.js
 <!-- Your app markup --> 
 </div>
 
-<script src="../barea.js"></script>
-<script>
-const bareaapp = getBareaApp();
 
-const appcontent = {
-    data: {
-      model: { name:"Johnny Barea" }
-    },
-    methods:
-    {
-      someHandler: function(event, arg1, arg2, arg3, arg4, arg5, arg6)
-      {
-        //Do something
-      }
-    },
-    computed:
-    {
-      someComputedProperty: function()
-      {
-        //get some data, or calculate something nice
-      }
-    },
-    mounted: function(data) 
-    {
-          data.model = getSomeData();
-    }
-};
+<script type="module">
 
-bareaapp.mount("app",appcontent);
+ import {BareaApp,BareaViewState,BareaDataModel,BareaHelper} from '/barea.js';
+
+    //BareaHelper.printDebugLogs();
+    //BareaHelper.enableDebugLog(10);
+
+    //Barea app element
+     const appElement = document.getElementById("app");
+
+    const bareaapp = new BareaApp();
+
+    const appcontent = {
+      data: {
+        model: { name:"Johnny Barea" }
+      },
+      methods:
+      {
+        someHandler: function(event, arg1, arg2, arg3, arg4, arg5, arg6)
+        {
+          //Do something
+        }
+      },
+      computed:
+      {
+        someComputedProperty: function()
+        {
+          //get some data, or calculate something nice
+        }
+      },
+      mounted: function(data) 
+      {
+            data.model = getSomeData();
+      }
+  };
+
+  bareaapp.mount("app",appcontent);
 </script>
 ```
 
