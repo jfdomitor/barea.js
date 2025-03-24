@@ -163,6 +163,7 @@ export class BareaApp
 
     /**
      * Force a full reload of barea, except for the proxy
+     * Baraea use this when new untracked objects in the data is detected
      */
     refresh() 
     {
@@ -175,7 +176,8 @@ export class BareaApp
             return;
         }
 
-        this.#uiDependencyTracker.clear();
+        //restore templates and clear
+        this.#uiDependencyTracker.restoreUITracker();
         this.#uiDependencyTracker = this.#getUserInterfaceTracker(this.#handleUITrackerNofify);
         Object.keys(this.#computedProperties).forEach(key => {
             this.#computedProperties[key].clearDependentDirectives();
@@ -499,7 +501,7 @@ export class BareaApp
                         }
 
                         if (!tracking_obj.data || !tracking_obj.key){
-                            console.error(`Could not track directive ${attr.name}${attr.value} could not match data at the given path`);
+                            console.error(`Could not track directive ${attr.name} (${attr.value}) could not match data at the given path`);
                             return;
                         }
 
@@ -801,13 +803,9 @@ export class BareaApp
                              console.error(`No path or computed function was found in the ${attr.name} expression`);
                              return;
                          }
-
-                        
-                        let templateHtml = el.innerHTML.trim()
-                            .replace(/>\s+</g, '><')  // Remove spaces between tags
-                            .replace(/(\S)\s{2,}(\S)/g, '$1 $2'); // Reduce multiple spaces to one inside text nodes
-        
-                        const tracking_obj = this.#createTemplateDirective(trackcontext,el,attr.name,attr.value,null,"", el.parentElement,templateHtml, el.localName);
+ 
+                        const tracking_obj = this.#createTemplateDirective(trackcontext,el,attr.name,attr.value,null,"", el.parentElement, el.innerHTML, el.localName);
+                        tracking_obj.elementnextsibling=el.nextSibling;
                         tracking_obj.expressiontype = attribute_value_type;
                         if (attribute_value_type!==BareaHelper.EXPR_TYPE_COMPUTED)
                         {
@@ -881,6 +879,27 @@ export class BareaApp
                     tracking_obj.isrendered = false;
                     tracking_obj.iscomputed = false;
                     nodeexpressions.push(tracking_obj);
+
+                    if (!tracking_obj.key && tracking_obj.data){
+                        //If we're tracking an object make it aware of child objects
+                        let instance = this;
+
+                        function trackNestedObjects(obj) 
+                        {
+                            for (let key in obj) {
+                                if (typeof obj[key] === "object" && obj[key] !== null && !Array.isArray(obj[key])) {
+                                    let tracking_child = instance.#createInterpolationDirective(trackcontext,BareaHelper.DIR_INTERPOLATION,path,null,"",node, expr, node.nodeValue);
+                                    tracking_child.data =  obj[key];
+                                    tracking_child.isrendered = false;
+                                    tracking_child.iscomputed = false;
+                                    nodeexpressions.push(tracking_child);
+                                    trackNestedObjects(obj[key]); 
+                                }
+                            }
+                        }
+
+                        trackNestedObjects(tracking_obj.data);
+                    }
                       
                 }
                 else if (BareaHelper.INTERPOL_INDEX===attribute_value_type)
@@ -1775,6 +1794,7 @@ export class BareaApp
             #objectCounter=0;
             #trackingCalls=0;
             #notificationCalls=0;
+            #userTemplates=[];
 
             constructor(notifycallback) 
             {
@@ -1875,9 +1895,10 @@ export class BareaApp
             {
                 this.#trackingCalls++;
 
-                if (!directive.data && !directive.isrendered && !BareaHelper.DIR_GROUP_MARKUP_GENERATION.includes(directive.directivename))
+                if (!directive.data && !directive.isrendered && !BareaHelper.DIR_GROUP_MARKUP_GENERATION.includes(directive.directivename)){
                     console.error(`Tracked UI has no data`,directive);
-
+                    return;
+                }
                 if (BareaHelper.DIR_GROUP_COMPUTED.includes(directive.directivename))
                     return;
 
@@ -1903,6 +1924,14 @@ export class BareaApp
                     this.#dependencies.set(depKey, new Set());
                 }
                 this.#dependencies.get(depKey).add(directive);
+
+                //Store user templates such as ba-foreach to be able to restore them on refresh
+                if (BareaHelper.DIR_GROUP_MARKUP_GENERATION.includes(directive.directivename))
+                {
+                    if (directive.element && directive.parentelement){
+                       this.#userTemplates.push(directive);
+                    }
+                }
 
                 return true;
 
@@ -1934,7 +1963,7 @@ export class BareaApp
                 else
                 {
                   barea.refresh();
-                  console.warn('UI dependency tracker was notified of an object that was not tracked - barea.refresh() called', reasonobj);
+                  //console.warn('UI dependency tracker was notified of an object that was not tracked - barea.refresh() called', reasonobj);
                 }
               
             }
@@ -1947,8 +1976,21 @@ export class BareaApp
                 }
             }
 
-            clear()
+            restoreUITracker()
             {
+                //restore templates
+                this.#userTemplates.forEach(directive => 
+                {
+                    if (BareaHelper.DIR_GROUP_MARKUP_GENERATION.includes(directive.directivename))
+                    {
+                        if (directive.element && directive.parentelement){
+                            directive.parentelement.innerHTML="";
+                            directive.parentelement.appendChild(directive.element);
+                        }
+                    }                           
+                });
+
+                this.#userTemplates=[];
                 this.#dependencies.clear();
                 this.#objectReference=new WeakMap();
             }
@@ -2137,6 +2179,8 @@ export class BareaViewState extends EventTarget
                registeredview.addViewMarkUpInfo(markupinfo);
 
            });
+
+           template.remove();
 
        });
 

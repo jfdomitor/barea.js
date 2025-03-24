@@ -96,7 +96,7 @@
     <div id="app" class="ba-cloak">
 
         <img ba-src="root.image" />
-        <h1 style="float: left; margin-left: 20px;">barea.js, this page demonstrates common functions in barea.js</h1>
+        <h1 style="float: left; margin-left: 20px;">barea.js, directive demonstration</h1>
 
         <div class="container">
 
@@ -180,8 +180,6 @@
           
 
         </div>
-
-
     </div>
        
    
@@ -220,7 +218,8 @@
                 addMoreCount:15, 
                 linkToNPM:"https://www.npmjs.com",
                 image:"stone.png",
-                faketrigger:false
+                faketrigger:false,
+                model:{}
                 
             },
             methods:{
@@ -264,6 +263,11 @@
                 },
                 runSomething: function(event, arg1, arg2, arg3, arg4, arg5, arg6)
                 {
+                    let data = this.getData();
+                    if (!data.model.name)
+                        data.model.name = "test";
+
+                    data.model.name = data.model.name  + " test";
                    alert('Thanks for the run !');
                 },
                 arrayOperation: function(event,element,data,funcname) 
