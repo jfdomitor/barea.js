@@ -18,7 +18,7 @@ No dependencies just raw reactivity. Good for SPA:s or just to space up the clie
 npm install barea.js
 ```
 # Live Demo
- [Live Demo](https://jfdomitor.github.io/Demo/)
+ [Live Demo](https://jfdomitor.github.io/barea.js/)
  
 # Setup
 
