@@ -2561,7 +2561,7 @@ export class BareaDataModel
         
                 if (!db){
                     db = {};
-                    db[DataModel.DbTableName()+'_db'] =[];
+                    db[DataModel.DbTableName+'_db'] =[];
                     localStorage.setItem("BareaDataBase", JSON.stringify(db)); 
                 }
 

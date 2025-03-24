@@ -1,6 +1,6 @@
 {
   "name": "barea.js",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "description": "A lightweight reactive client library for modern browsers",
   "main": "barea.js",
   "directories": {
