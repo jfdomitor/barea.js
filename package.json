@@ -1,6 +1,6 @@
 {
   "name": "barea.js",
-  "version": "1.2.3",
+  "version": "1.2.4",
   "description": "A lightweight reactive client library for modern browsers",
   "main": "barea.js",
   "directories": {
@@ -15,7 +15,10 @@
   },
   "keywords": [
     "reactivity",
-    "databinding"
+    "databinding",
+    "state-management",
+    "frontend",
+    "browser"
   ],
   "author": "Johan Filipsson",
   "license": "ISC",
