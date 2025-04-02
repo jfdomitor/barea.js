@@ -90,10 +90,10 @@
            
     </style>
 </head>
-<body>
+<body class="ba-cloak">
 
 
-    <div id="app" class="ba-cloak">
+    <div id="app">
 
         <img ba-src="root.image" />
         <h1 style="float: left; margin-left: 20px;">barea.js, directive demonstration</h1>
@@ -128,6 +128,16 @@
                 <div class="demobox">
                     <h4>Computed Interpolation</h4>
                     <p>I just computed this fake authour name: <b>{{fullName}}</b></p>
+                </div>
+                <div class="demobox">
+                    <h4>Add an object to the model</h4>
+                    <button class="beautiful-btn" ba-click="addObject()">Run</button>
+                    {{root.newObject}}
+                </div>
+                <div class="demobox">
+                    <h4>Add an array to the model</h4>
+                    <button class="beautiful-btn" ba-click="addArray()">Run</button>
+                    {{root.newArray}}
                 </div>
 
               </div>
@@ -203,9 +213,6 @@
         //BareaHelper.printDebugLogs();
         //BareaHelper.enableDebugLog(10);
 
-         //Hide the app element before the dom is fully loaded
-         bareaapp.enableHideBeforeLoaded(true);
-
          const appcontent = {
             data: {
                 interpolatedvalue:"Hello !", 
@@ -268,7 +275,15 @@
                         data.model.name = "test";
 
                     data.model.name = data.model.name  + " test";
-                   alert('Thanks for the run !');
+                    alert('Thanks for the run !');
+                },
+                addObject: function(event, arg1, arg2, arg3, arg4, arg5, arg6)
+                {
+                    clientdata.newObject={ value: "Hello beautiful world..." };
+                },
+                addArray: function(event, arg1, arg2, arg3, arg4, arg5, arg6)
+                {
+                    clientdata.newArray=[{ a: "Hello beautiful world..." }, { a: "Hello ugly world..." }];
                 },
                 arrayOperation: function(event,element,data,funcname) 
                 {
@@ -299,11 +314,18 @@
 
                 fullName: function()
                 {
-                    return this.getData().firstName + ' ' + this.getData().lastName;
+                    let data = this.getData();
+                    if (!data)
+                        return "";
+
+                    return data.firstName + ' ' + data.lastName;
                 },
                 showCount: function()
                 {
                     let data = this.getData();
+                    if (!data)
+                        return 0;
+
                     let trigger = data.faketrigger; //showCount will now be dependent of data.faketrigger, we can use that to edit faketrigger to recompute
                     return data.ramonesShows.length;
                 }
@@ -311,13 +333,14 @@
             },
             mounted: function(data) 
             {
-                data.ramonesShows = getRamonesShows().slice(0,this.getData().addMoreCount);
+                data.ramonesShows = getRamonesShows().slice(0,data.addMoreCount);
+                return true;
             }
          };
 
-         bareaapp.mount("app",appcontent);
+         let clientdata = await bareaapp.mount("app",appcontent);
 
-        
+         document.addEventListener('DOMContentLoaded', function(){ document.querySelectorAll(".ba-cloak").forEach(el => el.classList.remove("ba-cloak"));});
     </script>
 
 </body>

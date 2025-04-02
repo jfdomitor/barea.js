@@ -1,16 +1,16 @@
 # barea.js
-barea.js (Basic Reactivity) is a small reactive java script heavy influenced by vue.js and angular.js (before they became huge frameworks).
+barea.js (Basic Reactivity) is a reactive java script heavy influenced by vue.js and angular.js (before they became huge frameworks).
 No dependencies just raw reactivity. Good for SPA:s or just to space up the client of your server rendered site.
 
 # What about it
 
 * Using proxies to react on data changes, like vue3
-* Fast
 * No dependencies to other libs
 * Computed properties with automatic dependency tracking
 * UI dependency tracking that only update/rerender UI elements when needed
 * Templates
 * State tracking
+* No typescript, no pre compilation, everything vanilla
 * and more...
 
 # Install
@@ -43,7 +43,7 @@ npm install barea.js
 
     //Createa a data model and database helper
     let db = new BareaDataModel("customer");
-    db.addDbIntegerColumn('id',true);
+    db.addDbIntegerColumn('id',true,true);
     db.addDbStringColumn('customerName');
     db.addDbStringColumn('customerPhone');
     db.useBareaLocalStorageDb();
@@ -86,7 +86,7 @@ npm install barea.js
     //Get the data model on page load
     appcontent.data.model = db.getBareaDataModel();
 
-   state.onChange(()=>
+   state.onChange(async ()=>
    {
         //Determine app/view from path
         if (state.CurrentView)
@@ -103,12 +103,12 @@ npm install barea.js
             //The listview is the primary view in this example
             if (state.CurrentView &&  appcontent.data.viewInfo.islistview)
             {
-                appcontent.data.model.entityList = db.getEntities();
+                appcontent.data.model.entityList = await db.getEntities();
             }
             else if (state.CurrentView && state.CurrentView.IsPersistedEntityView && state.EntityId)
             {
                 //Typical edit mode, when an id of the data to present is feteched from the path
-                appcontent.data.model[db.DbTableName] = db.getEntity(state.EntityId);
+                appcontent.data.model[db.DbTableName] = await db.getEntity(state.EntityId);
             }
             else if (state.CurrentView && appcontent.data.viewInfo.isnewentityview)
             {
@@ -117,7 +117,7 @@ npm install barea.js
             }
 
             //Bind the datamodel with the UI
-            let bareadata = app.mount(appElement, appcontent); 
+            let bareadata = await app.mount(appElement, appcontent); 
 
         }
 
@@ -130,10 +130,10 @@ npm install barea.js
 ```
 
 # Templates
-Define your templates directly on the page you're working with.
+Define your templates directly on the page you're working with. (Or load them your way with fetch)
 One template can be assigned to multiple views
 ```
- <!-- A template defining a header card for the views -->
+ <!-- A template defining a header card for the views. Multiple views share the same design -->
 
             <template>
                 <view id="new" path="/Customers/Create">
@@ -242,6 +242,14 @@ Use this together with handlers (ba-if, ba-show etc..) to have data at a certain
 ```
 Use this to set the href attribute from your data
 ```
+* Directive: ba-option-id, ba-option-text
+```
+Use this to set the options of the select element.
+Example:
+ <select ba-bind="root.authorization.authorizationId" class="form-control form-control-sm">
+    <option ba-foreach="item in root.authitem.viewItems" ba-option-id="item.id" ba-option-text="item.name"></option>
+</select>
+```
 * Interpolation
 ```
 Examples:
@@ -254,9 +262,12 @@ Tip: run examples/index.html with vs code live server to explore all directives 
 
 # In Depth (Key Factors)
 
-* Operates only on the app node where Barea.js is mounted.
+* Operates only on the app node where barea.js is mounted.
+
 * Proxies objects on get, ensuring that all mounted objects are always proxied.
+
 * UI Dependency Tracking: Directive objects are created, linked to both data and DOM elements, and stored in a UIDependencyTracker, which is notified when data changes. This ensures that only the relevant dom elements are updated on data change.
+
 * Computed Property Dependency Tracking: Tracking is based on the principle path (e.g., root.model.users.user), meaning a computed property is linked to all paths involved in calculating its value. If a directive uses a computed property, its directive object will also be linked to the computed property. This ensures that all related directives update when the property becomes dirty (i.e., needs recalculation). Only changes to data will trigger a dependent computed property. An array function cannot be the trigger, this is by design. Also rememeber to never edit data inside a computed property, since it might trigger an infinity loop.
   
 Example:
@@ -269,7 +280,9 @@ fullName: function()
 }
 ```
 * Expressions: For the directives: **ba-if, ba-class-if, ba-hide and ba-show** it's possible to register either an expression or a predifined computed property function. All expressions are converted into computed properties by running a dynamicly created function that acts as the getter of the computed property.
+
 * Templates: When rendering a template, new markup is generated, and these elements are added to both UI Dependency Tracking and Computed Property Dependency Tracking, just as during initial mounting. The generated markup is then managed in the same way as initially loaded data.
+
 * Avoid declaring too many computed functions or expressions directly in template markup, as this can significantly impact performance. If you load 1,000 rows, each containing multiple expressions or computed functions, the system may have to evaluate up to:
 1,000 × (number of expressions or functions per row). This can cause unnecessary re-renders and slow down the application.
 
